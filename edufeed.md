@@ -31,7 +31,7 @@ General:
 - `id`: `["d", <id>]` (we use nostr's `d`-tag here as identifier)
 - `type`: `["type", <type1>, <type2>, ...]`
 - `name`: `["name", <name>]`
-- `description`: `["description", <description>, <languageCode>]` (language optional, not specified in AMB)
+- `description`: `["description", <description>]`
 - `about`: `["about", <id>, <prefLabel>, <language>,]`
 - `keywords`: `["keywords", <keyword1>, <keyword2>, ...]`
 - `inLanguage`: `["inLanguage", <languageCode1>, <languageCode2>, ...]`
