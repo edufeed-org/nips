@@ -21,9 +21,12 @@ The transformation uses JSON-flattening with `:` as the delimiter to convert nes
 
 This NIP follows Nostr conventions where they align with AMB requirements:
 
+- **`d` tag**: Used as the unique identifier for the AMB resource (maps to AMB `id`)
 - **`t` tags**: Used for keywords/topics (instead of flattened `keywords` tags)
-- **`p` tags**: Used for creator/contributor references when the creator has a Nostr identity (pubkey), with fallback to flattened structure for non-Nostr identifiers
-- **`a` tags**: Used for references to other addressable events on Nostr (including other AMB events), with fallback to flattened URIs for external resources
+- **`p` tags**: Used for creator/contributor references when the creator has a Nostr identity (pubkey), with fallback to flattened structure for non-Nostr identifiers. Format: `["p", <pubkey-hex>, <relay-hint>, <role>]`
+- **`a` tags**: Used for references to other addressable events on Nostr (including other AMB events), with fallback to flattened URIs for external resources. Format: `["a", "30142:<pubkey>:<d-value>", <relay-hint>, <relationship>]`
+- **`r` tags**: Used for external URL references (original source, DOI, related web resources)
+- **`content` field**: SHOULD contain the description text for client compatibility; the `description` tag is kept for relay queryability
 
 ### Flattening Rules
 
@@ -56,7 +59,7 @@ This is how we convert each property of the AMB:
 - `id` → `["d", <id>]` (special case: use Nostr's `d` tag as identifier)
 - `type` → `["type", <value>]` (repeat for multiple types)
 - `name` → `["name", <value>]`
-- `description` → `["description", <value>]`
+- `description` → `["description", <value>]` AND `"content": <value>` (duplicated for client compatibility and relay queryability)
 - `about` (array of concept objects) → Repeat for each:
   - `["about:id", <uri>]`
   - `["about:prefLabel:lang", <label>]`
@@ -184,6 +187,18 @@ This is how we convert each property of the AMB:
   - `["caption:encodingFormat", <format>]` (optional, IANA media type)
   - `["caption:inLanguage", <languageCode>]` (optional)
 
+**External References:**
+
+External web resources related to this educational content use the Nostr-native `r` tag (per NIP-24):
+
+- `["r", <url>]` - Repeat for each external reference
+
+Examples:
+- `["r", "https://oersi.org/resources/xyz"]` - Original source URL
+- `["r", "https://doi.org/10.1234/example"]` - DOI reference
+- `["r", "urn:isbn:978-3-16-148410-0"]` - ISBN reference
+- `["r", "https://orcid.org/0000-0001-2345-6789"]` - ORCID link for attribution
+
 ## How to convert an AMB nostr-event to AMB metadata
 
 To convert a Nostr event back to AMB metadata:
@@ -193,8 +208,10 @@ To convert a Nostr event back to AMB metadata:
 3. **Reconstruct nesting**: Use the `:` delimiter to rebuild nested object structure
 4. **Handle arrays**: Multiple tags with identical keys become array elements
 5. **Preserve order**: Array order is determined by tag order in the event
-6. **Special mappings**: 
+6. **Special mappings**:
    - `d` tag → `id` property
+   - `content` field → `description` property (prefer over `description` tag if both exist)
+   - `r` tags → external references (not part of core AMB, but useful for attribution)
    - Convert string booleans to actual booleans
    - Parse ISO8601 dates if needed for validation
 
@@ -242,12 +259,12 @@ Query capabilities should include:
     ["license:id", "https://creativecommons.org/licenses/by/4.0/"],
     ["isAccessibleForFree", "true"]
   ],
-  "content": "",
+  "content": "An introductory video explaining the Pythagorean theorem",
   "sig": "6b0b78d56dea322864d35ea3b6d7e892d0e62bed96cd11ecb27d6c1d0b6d0cd68cd9ec82419946a5fb3c8d4a21eca88c9a5dad47a3b3e466ba18787224a613ef"
 }
 ```
 
-### Example 2: Resource with Creator and Affiliation
+### Example 2: Resource with Creator, Affiliation, and External References
 
 ```json
 {
@@ -290,9 +307,11 @@ Query capabilities should include:
     ["educationalLevel:prefLabel:en", "Bachelor or equivalent"],
     ["inLanguage", "en"],
     ["license:id", "https://creativecommons.org/licenses/by-sa/4.0/"],
-    ["isAccessibleForFree", "true"]
+    ["isAccessibleForFree", "true"],
+    ["r", "https://example.org/courses/physics-101"],
+    ["r", "https://doi.org/10.1234/physics-intro"]
   ],
-  "content": "",
+  "content": "A comprehensive introduction to classical mechanics",
   "sig": "8d1c89f5da33ec9a2b456def78a90b1cd23e456f78a90b12cd34e567f89a012b34c56d78e9f0a12bc3d45e6f78901a23b45c67d89e0f1a2b3c4d5e6f7890123a"
 }
 ```
@@ -334,4 +353,5 @@ nak event \
 - [AMB Specification](https://dini-ag-kim.github.io/amb/latest/)
 - [Nostr Protocol (NIP-01)](https://github.com/nostr-protocol/nips/blob/master/01.md)
 - [Addressable Events (NIP-33)](https://github.com/nostr-protocol/nips/blob/master/33.md)
+- [Extra Metadata Fields and Tags (NIP-24)](https://github.com/nostr-protocol/nips/blob/master/24.md) - `r` and `t` tag conventions
 - [JSON-Flattening Concept](https://localizely.com/json-flattener/)
