@@ -54,7 +54,7 @@ This NIP follows Nostr conventions where they align with AMB requirements:
 
 This is how we convert each property of the AMB:
 
-**General:**
+#### General:
 
 - `id` → `["d", <id>]` (special case: use Nostr's `d` tag as identifier)
 - `type` → `["type", <value>]` (repeat for multiple types)
@@ -76,7 +76,7 @@ This is how we convert each property of the AMB:
   - `["trailer:embedUrl", <url>]` (optional)
   - `["trailer:bitrate", <kbps>]` (optional)
 
-**Provenance:**
+#### Provenance:
 
 - `creator` (array of Person/Organization objects) → Repeat for each:
   - **Nostr-native (if creator has Nostr pubkey)**: `["p", <npub-hex>, <relay>, "creator"]`
@@ -101,7 +101,7 @@ This is how we convert each property of the AMB:
   - `["funder:name", <name>]`
   - `["funder:type", <"Person"|"Organization"|"FundingScheme">]`
 
-**Costs and Rights:**
+#### Costs and Rights:
 
 - `isAccessibleForFree` → `["isAccessibleForFree", <"true"|"false">]`
 - `license` (object) →
@@ -111,7 +111,7 @@ This is how we convert each property of the AMB:
   - `["conditionsOfAccess:prefLabel:lang", <label>]` (optional)
   - `["conditionsOfAccess:type", "Concept"]` (optional)
 
-**Educational:**
+#### Educational:
 
 - `learningResourceType` (array of Concept objects) → Repeat for each:
   - `["learningResourceType:id", <uri>]`
@@ -139,7 +139,7 @@ This is how we convert each property of the AMB:
   - `["interactivityType:prefLabel:lang", <label>]` (optional)
   - `["interactivityType:type", "Concept"]` (optional)
 
-**Relations:**
+#### Relations:
 
 - `isBasedOn` (array of objects) → Repeat for each:
   - **Nostr-native (if referenced resource is addressable AMB event)**: `["a", "30142:<pubkey>:<d-value>", <relay>, "isBasedOn"]`
@@ -159,7 +159,7 @@ This is how we convert each property of the AMB:
     - `["hasPart:name", <name>]` (optional)
     - `["hasPart:type", <type>]` (optional)
 
-**Meta-Metadata:**
+#### Meta-Metadata:
 
 - `mainEntityOfPage` (array of WebPage objects) → Repeat for each:
   - `["mainEntityOfPage:id", <uri>]`
@@ -170,7 +170,7 @@ This is how we convert each property of the AMB:
   - `["mainEntityOfPage:dateCreated", <ISO8601Date>]` (optional)
   - `["mainEntityOfPage:dateModified", <ISO8601Date>]` (optional)
 
-**Technical:**
+#### Technical:
 
 - `duration` → `["duration", <ISO8601Duration>]` (format: PnYnMnDTnHnMnS)
 - `encoding` (array of MediaObject objects) → Repeat for each:
@@ -187,7 +187,7 @@ This is how we convert each property of the AMB:
   - `["caption:encodingFormat", <format>]` (optional, IANA media type)
   - `["caption:inLanguage", <languageCode>]` (optional)
 
-**External References:**
+#### External References:
 
 External web resources related to this educational content use the Nostr-native `r` tag (per NIP-24):
 
