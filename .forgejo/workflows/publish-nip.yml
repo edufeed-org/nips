@@ -1,0 +1,55 @@
+name: Publish NIP to Nostr
+
+on:
+  push:
+    branches:
+      - edufeed-amb
+    paths:
+      - edufeed.md
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install nak
+        run: |
+          curl -sL https://github.com/fiatjaf/nak/releases/latest/download/nak-linux-amd64 -o /usr/local/bin/nak
+          chmod +x /usr/local/bin/nak
+
+      - name: Install pandoc
+        run: apt-get update && apt-get install -y pandoc
+
+      - name: Publish as Custom NIP (kind 30817)
+        env:
+          NOSTR_SECRET_KEY: ${{ secrets.NOSTR_NSEC }}
+        run: |
+          nak event \
+            -k 30817 \
+            -c @edufeed.md \
+            -t d=edufeed-amb \
+            -t 'title=Edufeed: AMB-NIP' \
+            -t k=30142 \
+            wss://relay.damus.io \
+            wss://nos.lol \
+            wss://relay.nostr.band \
+            wss://relay.edufeed.org
+
+      - name: Convert to Asciidoc
+        run: pandoc -f markdown -t asciidoc edufeed.md -o edufeed.adoc
+
+      - name: Publish as Wiki entry (kind 30818)
+        env:
+          NOSTR_SECRET_KEY: ${{ secrets.NOSTR_NSEC }}
+        run: |
+          nak event \
+            -k 30818 \
+            -c @edufeed.adoc \
+            -t d=edufeed-amb-nip \
+            -t 'title=Edufeed: AMB-NIP' \
+            wss://relay.damus.io \
+            wss://nos.lol \
+            wss://relay.nostr.band \
+            wss://relay.edufeed.org
