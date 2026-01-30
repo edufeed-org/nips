@@ -16,7 +16,9 @@ jobs:
 
       - name: Install nak
         run: |
-          curl -sL https://github.com/fiatjaf/nak/releases/latest/download/nak-linux-amd64 -o /usr/local/bin/nak
+          NAK_URL=$(curl -s https://api.github.com/repos/fiatjaf/nak/releases/latest \
+            | grep -o 'https://[^"]*linux-amd64')
+          curl -sL "$NAK_URL" -o /usr/local/bin/nak
           chmod +x /usr/local/bin/nak
 
       - name: Install pandoc
