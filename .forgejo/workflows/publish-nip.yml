@@ -28,9 +28,9 @@ jobs:
         run: |
           nak event \
             -k 30817 \
-            -c @edufeed.md \
+            -c @AMB.md \
             -t d=edufeed-amb \
-            -t 'title=Edufeed: AMB-NIP' \
+            -t 'title=NIP-AMB' \
             -t k=30142 \
             wss://relay.damus.io \
             wss://nos.lol \
@@ -38,7 +38,7 @@ jobs:
             wss://relay.edufeed.org
 
       - name: Convert to Asciidoc
-        run: pandoc -f markdown -t asciidoc edufeed.md -o edufeed.adoc
+        run: pandoc -f markdown -t asciidoc AMB.md -o AMB.adoc
 
       - name: Publish as Wiki entry (kind 30818)
         env:
@@ -46,9 +46,9 @@ jobs:
         run: |
           nak event \
             -k 30818 \
-            -c @edufeed.adoc \
+            -c @AMB.adoc \
             -t d=edufeed-amb-nip \
-            -t 'title=Edufeed: AMB-NIP' \
+            -t 'title=NIP-AMB' \
             wss://relay.damus.io \
             wss://nos.lol \
             wss://relay.nostr.band \

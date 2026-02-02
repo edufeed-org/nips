@@ -30,8 +30,7 @@ This NIP follows Nostr conventions where they align with AMB requirements:
 
 ### Flattening Rules
 
-1. **Simple properties**: Map directly to tags
-   - AMB: `{"name": "Resource Title"}`
+1. **Simple properties**: Map directly to tag}`
    - Nostr: `["name", "Resource Title"]`
 
 2. **Nested objects**: Flatten using `:` delimiter
