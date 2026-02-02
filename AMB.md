@@ -1,4 +1,4 @@
-# Edufeed: AMB-NIP
+# NIP-AMB
 
 ## Abstract
 
@@ -236,15 +236,136 @@ To convert a Nostr event back to AMB metadata:
 
 ## How to query for AMB nostr-events in supporting relays
 
-TODO: This section will be completed once relay support is implemented.
+AMB-supporting relays MUST support the standard NIP-01 filter fields and SHOULD support NIP-50 full-text search with field-specific filtering.
 
-Query capabilities should include:
-- Filter by `kind:30142` for all AMB events
-- Filter by author (`pubkey`)
-- Filter by specific subjects using `#about:id` tag
-- Filter by learning resource type using `#learningResourceType:id` tag
-- Filter by educational level using `#educationalLevel:id` tag
-- Full-text search in `name` and `description` tags
+### Standard Nostr Filters (NIP-01)
+
+Clients can query AMB events using standard Nostr filter fields:
+
+- `kinds` — filter by event kind (always `30142` for AMB events)
+- `authors` — filter by pubkey
+- `ids` — filter by event ID
+- `#d` — filter by the addressable event identifier (d-tag)
+- `since` / `until` — filter by `created_at` timestamp range
+
+### AMB Tag Filters
+
+In addition to standard single-letter tag filters, AMB-supporting relays SHOULD support filtering by the colon-delimited tag names used in AMB events. The tag name in the filter maps directly to the flattened tag key in the event:
+
+| Tag Filter | Description |
+|---|---|
+| `#t` | Filter by keyword |
+| `#r` | Filter by external reference URL |
+| `#about:id` | Filter by subject (controlled vocabulary URI) |
+| `#learningResourceType:id` | Filter by resource type URI |
+| `#educationalLevel:id` | Filter by educational level URI |
+| `#audience:id` | Filter by target audience URI |
+
+Any colon-delimited tag name present in AMB events can be used as a filter. Multiple values for the same tag are matched with OR logic. Different tag filters are combined with AND logic.
+
+### NIP-50 Full-Text Search
+
+AMB-supporting relays SHOULD implement [NIP-50](https://github.com/nostr-protocol/nips/blob/master/50.md) to allow full-text search across AMB metadata fields (at minimum: `name`, `description`, `keywords`).
+
+Relays MAY additionally support field-specific search filtering using dot-notation within the `search` string. The dot-notation maps to the nested AMB field structure (e.g., `publisher.name` maps to the `name` subfield of `publisher` objects):
+
+| Field Path | Description |
+|---|---|
+| `publisher.name` | Publisher organization name |
+| `creator.name` | Content creator name |
+| `about.prefLabel.<lang>` | Subject/topic label (e.g., `about.prefLabel.de`) |
+| `learningResourceType.prefLabel.<lang>` | Resource type label |
+| `audience.prefLabel.<lang>` | Target audience label |
+| `educationalLevel.prefLabel.<lang>` | Educational level label |
+
+Free-text terms and field filters can be mixed in the search string. Multiple values for the same base field are combined with OR logic.
+
+### Query Examples
+
+#### JSON Filter Objects
+
+```json
+// All AMB events
+{"kinds": [30142]}
+
+// Events by a specific author
+{"kinds": [30142], "authors": ["<pubkey-hex>"]}
+
+// Lookup by addressable event coordinate (kind + pubkey + d-tag)
+{"kinds": [30142], "authors": ["<pubkey-hex>"], "#d": ["<d-tag-value>"]}
+
+// Events created in a time range
+{"kinds": [30142], "since": 1700000000, "until": 1800000000}
+
+// Filter by keyword
+{"kinds": [30142], "#t": ["Mathematik"]}
+
+// Filter by subject URI
+{"kinds": [30142], "#about:id": ["http://w3id.org/kim/schulfaecher/s1017"]}
+
+// Filter by learning resource type URI
+{"kinds": [30142], "#learningResourceType:id": ["http://w3id.org/openeduhub/vocabs/new_lrt/video"]}
+
+// Filter by educational level URI
+{"kinds": [30142], "#educationalLevel:id": ["https://w3id.org/kim/educationalLevel/level_06"]}
+
+// Filter by external reference
+{"kinds": [30142], "#r": ["https://doi.org/10.1234/example"]}
+
+// NIP-50 full-text search
+{"kinds": [30142], "search": "pythagorean theorem"}
+
+// NIP-50 search with field-specific filter
+{"kinds": [30142], "search": "publisher.name:e-teaching.org"}
+
+// NIP-50 combined: free text + field filter
+{"kinds": [30142], "search": "forschung publisher.name:e-teaching.org"}
+
+// NIP-50 multiple values for same field (OR logic)
+{"kinds": [30142], "search": "about.prefLabel.de:Mathematik about.prefLabel.de:Physik"}
+```
+
+#### nak CLI Examples
+
+```bash
+# All AMB events
+nak req -k 30142 ws://relay.example.com
+
+# By author
+nak req -a <pubkey-hex> -k 30142 ws://relay.example.com
+
+# By d-tag
+nak req -d "oersi.org/resources/example123" -k 30142 ws://relay.example.com
+
+# Time range
+nak req --since 1700000000 --until 1800000000 -k 30142 ws://relay.example.com
+
+# By keyword
+nak req -t t=Mathematik -k 30142 ws://relay.example.com
+
+# By subject URI
+nak req -t about:id=http://w3id.org/kim/schulfaecher/s1017 -k 30142 ws://relay.example.com
+
+# By learning resource type
+nak req -t learningResourceType:id=http://w3id.org/openeduhub/vocabs/new_lrt/video -k 30142 ws://relay.example.com
+
+# By external reference
+nak req -t r=https://doi.org/10.1234/example -k 30142 ws://relay.example.com
+
+# Full-text search
+nak req --search "pythagorean theorem" -k 30142 ws://relay.example.com
+
+# Field-specific search
+nak req --search "publisher.name:e-teaching.org" -k 30142 ws://relay.example.com
+
+# Combined: free text + field filter
+nak req --search "forschung publisher.name:e-teaching.org" -k 30142 ws://relay.example.com
+```
+
+### Reference Implementations
+
+- **[amb-relay](https://github.com/edufeed-org/amb-relay)** — Nostr relay specialized for AMB events, built on the khatru relay framework
+- **[eventstore](https://github.com/edufeed-org/eventstore)** — Typesense-backed eventstore for kind 30142 events with full query documentation in its [README](https://github.com/edufeed-org/eventstore#query-capabilities)
 
 ## Examples
 
