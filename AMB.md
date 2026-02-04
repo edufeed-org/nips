@@ -255,6 +255,8 @@ In addition to standard single-letter tag filters, AMB-supporting relays SHOULD 
 |---|---|
 | `#t` | Filter by keyword |
 | `#r` | Filter by external reference URL |
+| `#p` | Filter by creator/contributor pubkey |
+| `#a` | Filter by addressable event reference |
 | `#about:id` | Filter by subject (controlled vocabulary URI) |
 | `#learningResourceType:id` | Filter by resource type URI |
 | `#educationalLevel:id` | Filter by educational level URI |
@@ -311,6 +313,12 @@ Free-text terms and field filters can be mixed in the search string. Multiple va
 // Filter by external reference
 {"kinds": [30142], "#r": ["https://doi.org/10.1234/example"]}
 
+// Filter by creator/contributor pubkey
+{"kinds": [30142], "#p": ["<pubkey-hex>"]}
+
+// Filter by addressable event reference
+{"kinds": [30142], "#a": ["30142:<pubkey-hex>:<d-tag-value>"]}
+
 // NIP-50 full-text search
 {"kinds": [30142], "search": "pythagorean theorem"}
 
@@ -351,6 +359,9 @@ nak req -t learningResourceType:id=http://w3id.org/openeduhub/vocabs/new_lrt/vid
 # By external reference
 nak req -t r=https://doi.org/10.1234/example -k 30142 ws://relay.example.com
 
+# By creator/contributor pubkey
+nak req -p <pubkey-hex> -k 30142 ws://relay.example.com
+
 # Full-text search
 nak req --search "pythagorean theorem" -k 30142 ws://relay.example.com
 
@@ -361,10 +372,12 @@ nak req --search "publisher.name:e-teaching.org" -k 30142 ws://relay.example.com
 nak req --search "forschung publisher.name:e-teaching.org" -k 30142 ws://relay.example.com
 ```
 
+> **Note:** Relays that require [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md) authentication need `--sec <key> --auth` flags with `nak`.
+
 ### Reference Implementations
 
-- **[amb-relay](https://github.com/edufeed-org/amb-relay)** — Nostr relay specialized for AMB events, built on the khatru relay framework
-- **[eventstore](https://github.com/edufeed-org/eventstore)** — Typesense-backed eventstore for kind 30142 events with full query documentation in its [README](https://github.com/edufeed-org/eventstore#query-capabilities)
+- **[amb-relay](https://git.edufeed.org/edufeed/amb-relay)** — Nostr relay specialized for AMB events, built on the khatru relay framework
+- **[nostrlib/eventstore/typesense30142](https://git.edufeed.org/edufeed/nostrlib/src/branch/master/eventstore/typesense30142)** — Typesense-backed eventstore for kind 30142 events with full query documentation in its [README](https://git.edufeed.org/edufeed/nostrlib/src/branch/master/eventstore/typesense30142/README.md)
 
 ## Examples
 
@@ -456,40 +469,55 @@ In this example:
 
 ### Using `nak` to create AMB events
 
-You can use [`nak`](https://github.com/fiatjaf/nak) to create AMB events with the flattened tag structure:
+You can use [`nak`](https://github.com/fiatjaf/nak) to create AMB events. There are two approaches:
+
+#### Flag-based (inline tags)
 
 ```bash
-# Example 1: Simple resource with Nostr-native t tags
+# Simple resource with Nostr-native t tags
 nak event \
-  --kind 30142 \
+  -k 30142 \
   --tag d="oersi.org/resources/example123" \
   --tag type="LearningResource" \
   --tag name="Pythagorean Theorem Video" \
   --tag description="An introductory video" \
   --tag about:id="http://w3id.org/kim/schulfaecher/s1017" \
   --tag about:prefLabel:de="Mathematik" \
-  --tag about:type="Concept" \
   --tag t="Pythagoras" \
   --tag t="Geometrie" \
   --tag inLanguage="de" \
-  --tag license:id="https://creativecommons.org/licenses/by/4.0/"
+  --tag license:id="https://creativecommons.org/licenses/by/4.0/" \
+  --sec <key> --auth ws://relay.example.com
 
-# Example 2: Resource with Nostr-native creator (p tag only)
+# Resource with Nostr-native creator (p tag)
 nak event \
-  --kind 30142 \
+  -k 30142 \
   --tag d="https://example.org/resource/456" \
   --tag name="Physics Course" \
-  --tag p="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798;wss://relay.example.com;creator"
+  -p "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798;wss://relay.example.com;creator" \
+  --sec <key> --auth ws://relay.example.com
+```
 
-# Example 3: Resource with non-Nostr creator (flattened tags)
-nak event \
-  --kind 30142 \
-  --tag d="https://example.org/resource/789" \
-  --tag name="Chemistry Course" \
-  --tag creator:name="Prof. John Doe" \
-  --tag creator:type="Person" \
-  --tag creator:affiliation:name="MIT" \
-  --tag creator:affiliation:type="Organization"
+#### JSON on stdin (pipe-based)
+
+This approach gives full control over the tag structure and is useful for scripting:
+
+```bash
+echo '{
+  "tags": [
+    ["d", "https://example.org/courses/physics-101"],
+    ["type", "LearningResource"],
+    ["name", "Introduction to Physics"],
+    ["description", "A comprehensive introduction to classical mechanics"],
+    ["inLanguage", "en"],
+    ["t", "physics"],
+    ["t", "mechanics"],
+    ["creator:name", "Dr. Jane Smith"],
+    ["creator:type", "Person"],
+    ["license:id", "https://creativecommons.org/licenses/by-sa/4.0/"]
+  ],
+  "content": "A comprehensive introduction to classical mechanics"
+}' | nak event -k 30142 --sec <key> --auth ws://relay.example.com
 ```
 
 ## References
