@@ -35,6 +35,7 @@ jobs:
             wss://relay.damus.io \
             wss://nos.lol \
             wss://relay.nostr.band \
+            wss://nip85.brainstorm.world \
             wss://relay.edufeed.org
 
       - name: Convert to Asciidoc
@@ -52,4 +53,5 @@ jobs:
             wss://relay.damus.io \
             wss://nos.lol \
             wss://relay.nostr.band \
+            wss://nip85.brainstorm.world \
             wss://relay.edufeed.org
