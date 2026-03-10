@@ -22,36 +22,23 @@ jobs:
       - name: Install pandoc
         run: apt-get update && apt-get install -y pandoc
 
-      - name: Publish as Custom NIP (kind 30817)
+      - name: Publish all NIPs
         env:
           NOSTR_SECRET_KEY: ${{ secrets.NOSTR_NSEC }}
         run: |
-          nak event \
-            -k 30817 \
-            -c @AMB.md \
-            -t d=edufeed-amb \
-            -t 'title=NIP-AMB' \
-            -t k=30142 \
-            wss://relay.damus.io \
-            wss://nos.lol \
-            wss://relay.nostr.band \
-            wss://nip85.brainstorm.world \
-            wss://relay.edufeed.org
+          RELAYS="wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nip85.brainstorm.world wss://relay.edufeed.org"
 
-      - name: Convert to Asciidoc
-        run: pandoc -f markdown -t asciidoc AMB.md -o AMB.adoc
+          publish() {
+            local file=$1 kind=$2
+            local slug=$(echo "$file" | tr '[:upper:]' '[:lower:]')
+            local dtag="edufeed-${slug}"
+            local title="NIP-${file}"
 
-      - name: Publish as Wiki entry (kind 30818)
-        env:
-          NOSTR_SECRET_KEY: ${{ secrets.NOSTR_NSEC }}
-        run: |
-          nak event \
-            -k 30818 \
-            -c @AMB.adoc \
-            -t d=edufeed-amb-nip \
-            -t 'title=NIP-AMB' \
-            wss://relay.damus.io \
-            wss://nos.lol \
-            wss://relay.nostr.band \
-            wss://nip85.brainstorm.world \
-            wss://relay.edufeed.org
+            echo "Publishing ${title}..."
+            nak event -k 30817 -c "@${file}.md" -t "d=${dtag}" -t "title=${title}" -t "k=${kind}" $RELAYS
+            pandoc -f markdown -t asciidoc "${file}.md" -o "${file}.adoc"
+            nak event -k 30818 -c "@${file}.adoc" -t "d=${dtag}-nip" -t "title=${title}" $RELAYS
+          }
+
+          publish AMB 30142
+          publish VOCAB 39737
