@@ -12,19 +12,19 @@ This NIP defines a system for publishing controlled vocabularies, taxonomies, th
 
 Nostr has labeling infrastructure ([NIP-32](32.md)) and domain-specific classification patterns ([NIP-AMB](AMB.md), [NIP-35](35.md)), but no general-purpose mechanism for publishing, discovering, and using shared controlled vocabularies on the protocol itself. Vocabulary definitions currently live on external web servers. This NIP brings them onto Nostr, making them decentralized, discoverable, and maintainable by anyone.
 
-## Event Kind
+## Event Kinds
 
-This NIP uses `kind:39737` for all published vocabulary-related events (concept schemes, concepts, and collections). These are addressable events, identified by `kind:pubkey:d-tag`.
+This NIP uses six addressable event kinds — one per entity type, with a parallel draft kind following NIP-23's pattern:
 
-`kind:39736` is reserved for work-in-progress drafts of these events, with identical structure. See [Drafts](#drafts).
+| Entity         | Published | Draft  |
+|----------------|-----------|--------|
+| ConceptScheme  | `39737`   | `39736` |
+| Concept        | `39738`   | `39735` |
+| Collection     | `39739`   | `39734` |
 
-A `type` tag distinguishes between the three event types:
+Distinct kinds let relays (which only index single-letter tags per NIP-01) return just the entity type a client asked for. The `["type", ...]` tag is retained for human readability and secondary validation but carries no query semantics.
 
-| Type | Description |
-|------|-------------|
-| `ConceptScheme` | A vocabulary — an aggregation of concepts |
-| `Concept` | A unit of thought — the fundamental building block |
-| `Collection` | A labeled group of concepts within a scheme |
+Clients displaying *published* vocabularies MUST filter by published kinds and MUST NOT surface draft kinds as published.
 
 ## Concept Scheme
 
@@ -41,8 +41,8 @@ The Nostr event itself provides standard metadata: `created_at` serves as the pu
     ["prefLabel", "Schulfächerliste", "de"],
     ["prefLabel", "School Subject List", "en"],
     ["description", "Classification of subjects taught in German schools", "en"],
-    ["a", "39737:<pubkey>:s10", "<relay>", "hasTopConcept"],
-    ["a", "39737:<pubkey>:s20", "<relay>", "hasTopConcept"],
+    ["a", "39738:<pubkey>:s10", "<relay>", "hasTopConcept"],
+    ["a", "39738:<pubkey>:s20", "<relay>", "hasTopConcept"],
     // optional: bridge to external URI
     ["i", "http://w3id.org/kim/schulfaecher/"]
   ],
@@ -67,7 +67,7 @@ A concept represents a single term, category, or idea within a vocabulary.
 
 ```jsonc
 {
-  "kind": 39737,
+  "kind": 39738,
   "tags": [
     ["d", "s1017"],
     ["type", "Concept"],
@@ -79,10 +79,10 @@ A concept represents a single term, category, or idea within a vocabulary.
     // scheme membership
     ["a", "39737:<pubkey>:schulfaecher", "<relay>", "inScheme"],
     // hierarchical relations (non-top concept — has broader)
-    ["a", "39737:<pubkey>:s10", "<relay>", "broader"],
-    ["a", "39737:<pubkey>:s101701", "<relay>", "narrower"],
+    ["a", "39738:<pubkey>:s10", "<relay>", "broader"],
+    ["a", "39738:<pubkey>:s101701", "<relay>", "narrower"],
     // associative relation
-    ["a", "39737:<pubkey>:s1018", "<relay>", "related"],
+    ["a", "39738:<pubkey>:s1018", "<relay>", "related"],
     // optional: bridge to external URI
     ["i", "http://w3id.org/kim/schulfaecher/s1017"]
   ],
@@ -131,15 +131,15 @@ A collection is a meaningful grouping of concepts within a scheme, used for orga
 
 ```jsonc
 {
-  "kind": 39737,
+  "kind": 39739,
   "tags": [
     ["d", "bachelor-programs"],
     ["type", "Collection"],
     ["prefLabel", "Bachelor Programs", "en"],
     ["prefLabel", "Bachelor-Studiengänge", "de"],
     ["a", "39737:<pubkey>:schulfaecher", "<relay>", "inScheme"],
-    ["a", "39737:<pubkey>:civil-eng", "<relay>", "member"],
-    ["a", "39737:<pubkey>:mech-eng", "<relay>", "member"]
+    ["a", "39738:<pubkey>:civil-eng", "<relay>", "member"],
+    ["a", "39738:<pubkey>:mech-eng", "<relay>", "member"]
   ],
   "content": ""
 }
@@ -151,26 +151,19 @@ Collections are organizational only. Semantic relations (`broader`, `narrower`, 
 
 ## Drafts
 
-Publishers MAY save work-in-progress vocabulary events using `kind:39736`, which has the same structure as `kind:39737`. This parallels [NIP-23](23.md)'s use of a separate kind (`kind:30024`) for long-form drafts.
+Each published kind has a matching draft kind with identical tag structure:
 
-Drafts are addressable events identified by `kind:39736:pubkey:d-tag`. The `d` tag SHOULD match the `d` tag that the publisher intends to use when publishing to `kind:39737`, so draft-to-published transitions are traceable.
+- `kind:39736` — ConceptScheme draft
+- `kind:39735` — Concept draft
+- `kind:39734` — Collection draft
 
-Drafts carry the full `ConceptScheme`, `Concept`, or `Collection` payload (see above) including the `type` tag. A draft of a concept scheme uses `["type","ConceptScheme"]` and so on.
+Drafts use the same `["d", ...]` identifier as their eventual published counterpart. Clients SHOULD treat drafts as private-to-the-author by default (e.g., publish only to the author's outbox relays). When publishing a draft as final, clients SHOULD delete the draft via NIP-09 and publish a new event under the corresponding published kind.
 
-### Client behavior
-
-- Clients that display **published** vocabularies (explore views, search, referencing) MUST filter by `kind:39737` and MUST NOT surface `kind:39736` events as published vocabularies.
-- Clients that offer **draft management** (the author's own editor, collaborative workspaces) SHOULD load `kind:39736` events alongside `kind:39737` events authored by the viewing user.
-- Relations between vocabulary events (`a` tags with markers) SHOULD point to the author's intended published coordinates — `39737:<pubkey>:<d>` — even when the target currently exists only as a draft, so that relations resolve automatically once the target is published. Clients MAY also resolve drafts locally while editing.
-- Clients publishing a draft's final version as `kind:39737` SHOULD delete the corresponding draft via [NIP-09](09.md) once publication is confirmed.
+`published_at` remains OPTIONAL metadata on published events (for preserving first-publish time across edits) and is never a draft gate.
 
 ### Relay policy
 
-Relays MAY accept or reject `kind:39736` per their policy. Public discovery relays MAY choose to reject drafts; private or author-scoped relays (e.g., a user's outbox) SHOULD accept them to support cross-device editing.
-
-### `published_at` tag (optional)
-
-On `kind:39737` events, publishers MAY include a `published_at` tag carrying the unix timestamp (stringified) of the first publication. This parallels [NIP-23](23.md)'s optional `published_at` and is useful because a replaceable event's `created_at` is updated on every edit, losing the original publish time. The `published_at` tag is **strictly optional** and is **not** used to distinguish drafts from published vocabularies — that distinction is carried by the event kind.
+Relays MAY accept or reject draft kinds per their policy. Public discovery relays MAY choose to reject drafts; private or author-scoped relays (e.g., a user's outbox) SHOULD accept them to support cross-device editing.
 
 ## Relations
 
@@ -232,7 +225,7 @@ Example — mapping between two Nostr-native vocabularies:
 
 ```jsonc
 {
-  "kind": 39737,
+  "kind": 39738,
   "tags": [
     ["d", "video"],
     ["type", "Concept"],
@@ -240,7 +233,7 @@ Example — mapping between two Nostr-native vocabularies:
     ["prefLabel", "Video", "en"],
     ["a", "39737:<pubkey>:hcrt", "<relay>", "inScheme"],
     // mapping to another publisher's vocabulary
-    ["a", "39737:<other-pubkey>:moving-image", "<relay>", "exactMatch"]
+    ["a", "39738:<other-pubkey>:moving-image", "<relay>", "exactMatch"]
   ],
   "content": ""
 }
@@ -276,10 +269,10 @@ Other Nostr events can reference concepts defined by this NIP using standard `a`
 
 ```jsonc
 // In a kind:30142 AMB event, a kind:1 note, or any other event:
-["a", "39737:<pubkey>:s1017", "<relay>"]
+["a", "39738:<pubkey>:s1017", "<relay>"]
 ```
 
-This makes the concept queryable: a relay filter `{"#a": ["39737:<pubkey>:s1017"]}` returns all events that reference that concept, across all event kinds.
+This makes the concept queryable: a relay filter `{"#a": ["39738:<pubkey>:s1017"]}` returns all events that reference that concept, across all event kinds.
 
 ## Authority Model
 
@@ -291,40 +284,48 @@ A vocabulary publisher MAY signal their identity using a [NIP-05](05.md) identif
 
 ## Querying
 
-### Fetch a Specific Concept or Scheme
+### Fetch a Specific Scheme
 
 ```json
-{"kinds": [39737], "authors": ["<pubkey>"], "#d": ["s1017"]}
+{"kinds": [39737], "authors": ["<pubkey>"], "#d": ["schulfaecher"]}
 ```
 
-### Fetch All Concepts in a Scheme
-
-Since concepts reference their scheme via `a` tags with the `inScheme` marker, and relays index `a` tags:
+### Fetch a Specific Concept
 
 ```json
-{"kinds": [39737], "#a": ["39737:<pubkey>:schulfaecher"]}
+{"kinds": [39738], "authors": ["<pubkey>"], "#d": ["s1017"]}
 ```
 
-This returns all concepts and collections that reference the scheme, plus any other events that reference it.
-
-### Fetch All Concept Schemes by a Publisher
+### Fetch all ConceptSchemes from a publisher
 
 ```json
-{"kinds": [39737], "authors": ["<pubkey>"], "#type": ["ConceptScheme"]}
+{ "kinds": [39737], "authors": ["<hex>"] }
 ```
 
-Note: this requires relay support for filtering on the `type` tag. Relays that do not index multi-letter tags may require client-side filtering.
-
-This filter returns only published schemes. Clients that also want to show the viewing user's drafts can widen the filter:
+### Fetch all Concepts belonging to a ConceptScheme
 
 ```json
-{"kinds": [39737, 39736], "authors": ["<pubkey>"], "#type": ["ConceptScheme"]}
+{ "kinds": [39738], "#a": ["39737:<hex>:<d>"] }
+```
+
+### Fetch all Collections belonging to a ConceptScheme
+
+```json
+{ "kinds": [39739], "#a": ["39737:<hex>:<d>"] }
+```
+
+All filters use only single-letter tags (`a`) or the `kinds` field, so they work with any NIP-01-compliant relay. No multi-letter tag indexing is required.
+
+Clients that also want to show the viewing user's drafts can widen the filter by adding the matching draft kind — for example, schemes plus draft schemes:
+
+```json
+{ "kinds": [39737, 39736], "authors": ["<hex>"] }
 ```
 
 ### Find All Events Tagged with a Concept
 
 ```json
-{"#a": ["39737:<pubkey>:s1017"]}
+{"#a": ["39738:<pubkey>:s1017"]}
 ```
 
 This works across all event kinds — AMB events, notes, labels, etc.
@@ -354,8 +355,8 @@ SKOS defines `broaderTransitive` and `narrowerTransitive` as inferred properties
     ["type", "ConceptScheme"],
     ["prefLabel", "Hochschulcampus Ressourcentypen", "de"],
     ["prefLabel", "Higher Education Resource Types", "en"],
-    ["a", "39737:abc123...:text", "wss://relay.example.com", "hasTopConcept"],
-    ["a", "39737:abc123...:audiovisual", "wss://relay.example.com", "hasTopConcept"],
+    ["a", "39738:abc123...:text", "wss://relay.example.com", "hasTopConcept"],
+    ["a", "39738:abc123...:audiovisual", "wss://relay.example.com", "hasTopConcept"],
     ["i", "https://w3id.org/kim/hcrt/scheme"]
   ],
   "content": "A controlled vocabulary of resource types for higher education."
@@ -366,7 +367,7 @@ SKOS defines `broaderTransitive` and `narrowerTransitive` as inferred properties
 
 ```json
 {
-  "kind": 39737,
+  "kind": 39738,
   "pubkey": "abc123...",
   "tags": [
     ["d", "audiovisual"],
@@ -375,8 +376,8 @@ SKOS defines `broaderTransitive` and `narrowerTransitive` as inferred properties
     ["prefLabel", "Audiovisual Medium", "en"],
     ["a", "39737:abc123...:hcrt", "wss://relay.example.com", "inScheme"],
     ["a", "39737:abc123...:hcrt", "wss://relay.example.com", "topConceptOf"],
-    ["a", "39737:abc123...:video", "wss://relay.example.com", "narrower"],
-    ["a", "39737:abc123...:audio", "wss://relay.example.com", "narrower"],
+    ["a", "39738:abc123...:video", "wss://relay.example.com", "narrower"],
+    ["a", "39738:abc123...:audio", "wss://relay.example.com", "narrower"],
     ["i", "https://w3id.org/kim/hcrt/audiovisual"]
   ],
   "content": ""
@@ -387,7 +388,7 @@ SKOS defines `broaderTransitive` and `narrowerTransitive` as inferred properties
 
 ```json
 {
-  "kind": 39737,
+  "kind": 39738,
   "pubkey": "abc123...",
   "tags": [
     ["d", "video"],
@@ -398,7 +399,7 @@ SKOS defines `broaderTransitive` and `narrowerTransitive` as inferred properties
     ["altLabel", "Moving Image", "en"],
     ["notation", "video"],
     ["a", "39737:abc123...:hcrt", "wss://relay.example.com", "inScheme"],
-    ["a", "39737:abc123...:audiovisual", "wss://relay.example.com", "broader"],
+    ["a", "39738:abc123...:audiovisual", "wss://relay.example.com", "broader"],
     ["r", "https://w3id.org/kim/hcrt/video", "exactMatch"],
     ["r", "http://purl.org/dc/dcmitype/MovingImage", "closeMatch"],
     ["i", "https://w3id.org/kim/hcrt/video"]
@@ -413,7 +414,7 @@ A concept in one Nostr-native vocabulary mapped to a concept in another:
 
 ```json
 {
-  "kind": 39737,
+  "kind": 39738,
   "pubkey": "abc123...",
   "tags": [
     ["d", "math"],
@@ -421,7 +422,7 @@ A concept in one Nostr-native vocabulary mapped to a concept in another:
     ["prefLabel", "Mathematik", "de"],
     ["prefLabel", "Mathematics", "en"],
     ["a", "39737:abc123...:schulfaecher", "wss://relay.example.com", "inScheme"],
-    ["a", "39737:def456...:mathematics", "wss://relay2.example.com", "exactMatch"]
+    ["a", "39738:def456...:mathematics", "wss://relay2.example.com", "exactMatch"]
   ],
   "content": ""
 }
@@ -437,14 +438,18 @@ An educational resource referencing a Nostr-native vocabulary concept:
   "tags": [
     ["d", "pythagorean-theorem-video"],
     ["name", "Pythagorean Theorem Explained"],
-    ["a", "39737:abc123...:s1017", "wss://relay.example.com"],
-    ["a", "39737:abc123...:video", "wss://relay.example.com"],
+    ["a", "39738:abc123...:s1017", "wss://relay.example.com"],
+    ["a", "39738:abc123...:video", "wss://relay.example.com"],
     ["t", "Pythagoras"],
     ["t", "Geometrie"]
   ],
   "content": "An introductory video explaining the Pythagorean theorem"
 }
 ```
+
+## Migration from single-kind
+
+Events published under the pre-split rule (all as `kind:39737`, disambiguated by the `type` tag) are not automatically valid under this revision. Publishers SHOULD republish Concept and Collection events under `kind:39738` / `kind:39739`. Clients MAY continue to read legacy events for backward compatibility but SHOULD treat any `kind:39737` event whose `type` tag is not `ConceptScheme` as legacy-only.
 
 ## References
 
