@@ -22,6 +22,8 @@ This NIP uses six addressable event kinds — one per entity type, with a parall
 | Concept        | `39738`   | `39735` |
 | Collection     | `39739`   | `39734` |
 
+*Published kinds increment (39737 → 39738 → 39739); draft kinds decrement (39736 → 39735 → 39734) so the `39737` / `39736` pair from an earlier revision of this NIP is preserved.*
+
 Distinct kinds let relays (which only index single-letter tags per NIP-01) return just the entity type a client asked for. The `["type", ...]` tag is retained for human readability and secondary validation but carries no query semantics.
 
 Clients displaying *published* vocabularies MUST filter by published kinds and MUST NOT surface draft kinds as published.
@@ -159,7 +161,9 @@ Each published kind has a matching draft kind with identical tag structure:
 
 Drafts use the same `["d", ...]` identifier as their eventual published counterpart. Clients SHOULD treat drafts as private-to-the-author by default (e.g., publish only to the author's outbox relays). When publishing a draft as final, clients SHOULD delete the draft via NIP-09 and publish a new event under the corresponding published kind.
 
-`published_at` remains OPTIONAL metadata on published events (for preserving first-publish time across edits) and is never a draft gate.
+`a` tag references between vocabulary events SHOULD use the **published** kind prefix of the target even when the target currently exists only as a draft — i.e., a draft Concept whose `inScheme` points at a still-unpublished ConceptScheme SHOULD reference it as `39737:<pubkey>:<d>`, not `39736:<pubkey>:<d>`. This way references resolve automatically the moment the target is published. A client rendering a reference whose target has not yet been published MAY show it as an unresolved reference.
+
+`published_at` remains OPTIONAL metadata on published events (for preserving first-publish time across edits) and is never a draft gate. Its value, when present, is a stringified unix timestamp in seconds — mirroring NIP-23's use of the same tag.
 
 ### Relay policy
 
@@ -450,6 +454,18 @@ An educational resource referencing a Nostr-native vocabulary concept:
 ## Migration from single-kind
 
 Events published under the pre-split rule (all as `kind:39737`, disambiguated by the `type` tag) are not automatically valid under this revision. Publishers SHOULD republish Concept and Collection events under `kind:39738` / `kind:39739`. Clients MAY continue to read legacy events for backward compatibility but SHOULD treat any `kind:39737` event whose `type` tag is not `ConceptScheme` as legacy-only.
+
+### Impact on existing references
+
+Any event in the wider Nostr ecosystem (for example, NIP-AMB learning-resource events) that references a concept via an `a` tag with the legacy `39737:<pubkey>:<d>` coordinate becomes stale once that concept is republished under `kind:39738`: the reference's kind prefix no longer matches the target's kind. Clients resolving such references SHOULD attempt a fallback lookup using `kind:39738` with the same `pubkey:d` suffix before treating the reference as unresolved.
+
+Publishers migrating their own vocabularies SHOULD:
+
+1. Republish each Concept event under `kind:39738` and each Collection event under `kind:39739`, preserving the original `d` identifier.
+2. NIP-09-delete the legacy `kind:39737` Concept / Collection events so relays can garbage-collect them.
+3. Optionally announce the migration (e.g., via a kind:1 note) so downstream consumers know to update their cached references.
+
+During a transition window, clients MAY dual-read both the legacy and the new kinds to minimize broken references.
 
 ## References
 
