@@ -14,7 +14,9 @@ Nostr has labeling infrastructure ([NIP-32](32.md)) and domain-specific classifi
 
 ## Event Kind
 
-This NIP uses `kind:39737` for all vocabulary-related events (concept schemes, concepts, and collections). These are addressable events, identified by `kind:pubkey:d-tag`.
+This NIP uses `kind:39737` for all published vocabulary-related events (concept schemes, concepts, and collections). These are addressable events, identified by `kind:pubkey:d-tag`.
+
+`kind:39736` is reserved for work-in-progress drafts of these events, with identical structure. See [Drafts](#drafts).
 
 A `type` tag distinguishes between the three event types:
 
@@ -146,6 +148,29 @@ A collection is a meaningful grouping of concepts within a scheme, used for orga
 Collections are organizational only. Semantic relations (`broader`, `narrower`, `related`) MUST NOT be used on or target Collection events.
 
 > **Note:** SKOS also defines `OrderedCollection` for collections with meaningful ordering. This is intentionally omitted from this NIP for simplicity and may be specified in a future extension.
+
+## Drafts
+
+Publishers MAY save work-in-progress vocabulary events using `kind:39736`, which has the same structure as `kind:39737`. This parallels [NIP-23](23.md)'s use of a separate kind (`kind:30024`) for long-form drafts.
+
+Drafts are addressable events identified by `kind:39736:pubkey:d-tag`. The `d` tag SHOULD match the `d` tag that the publisher intends to use when publishing to `kind:39737`, so draft-to-published transitions are traceable.
+
+Drafts carry the full `ConceptScheme`, `Concept`, or `Collection` payload (see above) including the `type` tag. A draft of a concept scheme uses `["type","ConceptScheme"]` and so on.
+
+### Client behavior
+
+- Clients that display **published** vocabularies (explore views, search, referencing) MUST filter by `kind:39737` and MUST NOT surface `kind:39736` events as published vocabularies.
+- Clients that offer **draft management** (the author's own editor, collaborative workspaces) SHOULD load `kind:39736` events alongside `kind:39737` events authored by the viewing user.
+- Relations between vocabulary events (`a` tags with markers) SHOULD point to the author's intended published coordinates — `39737:<pubkey>:<d>` — even when the target currently exists only as a draft, so that relations resolve automatically once the target is published. Clients MAY also resolve drafts locally while editing.
+- Clients publishing a draft's final version as `kind:39737` SHOULD delete the corresponding draft via [NIP-09](09.md) once publication is confirmed.
+
+### Relay policy
+
+Relays MAY accept or reject `kind:39736` per their policy. Public discovery relays MAY choose to reject drafts; private or author-scoped relays (e.g., a user's outbox) SHOULD accept them to support cross-device editing.
+
+### `published_at` tag (optional)
+
+On `kind:39737` events, publishers MAY include a `published_at` tag carrying the unix timestamp (stringified) of the first publication. This parallels [NIP-23](23.md)'s optional `published_at` and is useful because a replaceable event's `created_at` is updated on every edit, losing the original publish time. The `published_at` tag is **strictly optional** and is **not** used to distinguish drafts from published vocabularies — that distinction is carried by the event kind.
 
 ## Relations
 
@@ -290,6 +315,12 @@ This returns all concepts and collections that reference the scheme, plus any ot
 
 Note: this requires relay support for filtering on the `type` tag. Relays that do not index multi-letter tags may require client-side filtering.
 
+This filter returns only published schemes. Clients that also want to show the viewing user's drafts can widen the filter:
+
+```json
+{"kinds": [39737, 39736], "authors": ["<pubkey>"], "#type": ["ConceptScheme"]}
+```
+
 ### Find All Events Tagged with a Concept
 
 ```json
@@ -420,6 +451,8 @@ An educational resource referencing a Nostr-native vocabulary concept:
 - [SKOS Reference (W3C)](https://www.w3.org/TR/skos-reference/) — the vocabulary model this NIP is inspired by
 - [SkoHub](https://skohub.io/) — SKOS vocabulary publishing infrastructure
 - [NIP-01](01.md) — Basic protocol, addressable events
+- [NIP-09](09.md) — Event deletion (draft-to-published cleanup)
+- [NIP-23](23.md) — Long-form content (precedent for draft kind and `published_at` tag)
 - [NIP-32](32.md) — Labeling
 - [NIP-73](73.md) — External Content IDs (`i` tag)
 - [NIP-54](54.md) — Wiki (web-of-trust authority model precedent)
