@@ -197,6 +197,29 @@ Examples:
 - `["r", "https://doi.org/10.1234/example"]` - DOI reference
 - `["r", "urn:isbn:978-3-16-148410-0"]` - ISBN reference
 
+#### Extension Properties (ext namespace):
+
+Properties not standardized in AMB-core SHOULD use the `ext` namespace. The shape mirrors AMB-core's flattening, with one extra leading segment that identifies the publishing authority. This enables non-AMB-conformant metadata to coexist with AMB-core in a single event without collision risk.
+
+- Tag form: `["ext:<ns>:<facet>:<sub>", "<value>"]`
+  - `<ns>` — namespace authority slug. MUST NOT contain `:`. Lowercase, hyphen-separated, stable per author. Examples: `ekw`, `oersi`, `edufeed-amb-full`.
+  - `<facet>` — field name within the namespace. MUST NOT contain `:`. Examples: `bistum`, `ressourcentyp`, `fach`.
+  - `<sub>` — property suffix, identical to AMB-core: `id`, `type`, `prefLabel:<lang>`, `name`.
+- Example (single concept):
+  - `["ext:ekw:bistum:id", "https://w3id.org/kim/ekw/bistum/hannover"]`
+  - `["ext:ekw:bistum:prefLabel:de", "Hannover"]`
+  - `["ext:ekw:bistum:type", "Concept"]`
+- Multiple values for the same `<ns>:<facet>` pair repeat the tag triple, exactly as AMB-core arrays do (boundary on repeated `id`).
+- Implementations MUST NOT fold ext entries into AMB-core properties on reverse conversion. They surface as a sibling `ext` object — see Example 3 and the reverse-conversion section.
+
+##### Form-emitted ext (Edufeed convention)
+
+When a kind 30168 form produces ext fields, `<ns>` is the form's `d`-tag (a colon-free slug per Edufeed convention). The form-author's pubkey is **not** in `<ns>` — it's discoverable via the resource's `["a", "30168:<pub>:<d>", "<relay>", "form"]` back-ref. If two authors choose the same `<ns>`, the back-ref disambiguates which form was used; clients can layer `#a 30168:<pub>:<d>` to narrow.
+
+##### Migrating legacy unprefixed namespaces
+
+Some events in the wild use a de-facto `<ns>:<facet>:<sub>` shape without the `ext:` prefix (notably from `amb-nostr-converter` and EKW pipelines). Producers SHOULD migrate to the prefixed `ext:<ns>:<facet>:<sub>` form. Consumers MAY accept the unprefixed form for backward compatibility during a transition period, but the `ext:` prefix is the only forward-compatible shape because AMB-core may introduce new top-level properties that would otherwise collide.
+
 ## How to convert an AMB nostr-event to AMB metadata
 
 To convert a Nostr event back to AMB metadata:
@@ -231,6 +254,7 @@ To convert a Nostr event back to AMB metadata:
    }
    ```
    The `id` uses the NIP-19 `naddr` encoding (which includes kind, pubkey, d-tag, and relay hint(s)) prefixed with `nostr:` per NIP-21.
+9. **Extension tags (`ext:` prefix)**: Group tags whose key starts with `ext:` by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`). Place the resulting array of concept objects under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
 
 
 ## How to query for AMB nostr-events in supporting relays
@@ -261,6 +285,8 @@ In addition to standard single-letter tag filters, AMB-supporting relays SHOULD 
 | `#learningResourceType:id` | Filter by resource type URI |
 | `#educationalLevel:id` | Filter by educational level URI |
 | `#audience:id` | Filter by target audience URI |
+| `#ext:<ns>:<facet>:id` | Filter by extension property URI within a namespace |
+| `#ext:<ns>:<facet>:prefLabel:<lang>` | Filter by extension property label |
 
 Any colon-delimited tag name present in AMB events can be used as a filter. Multiple values for the same tag are matched with OR logic. Different tag filters are combined with AND logic.
 
@@ -278,6 +304,9 @@ Relays MAY additionally support field-specific search filtering using dot-notati
 | `learningResourceType.prefLabel.<lang>` | Resource type label |
 | `audience.prefLabel.<lang>` | Target audience label |
 | `educationalLevel.prefLabel.<lang>` | Educational level label |
+| `ext.<ns>.<facet>.id` | Extension property URI |
+| `ext.<ns>.<facet>.prefLabel.<lang>` | Extension property label |
+| `ext.<ns>.<facet>.type` | Extension property RDF type |
 
 Free-text terms and field filters can be mixed in the search string. Multiple values for the same base field are combined with OR logic.
 
@@ -464,6 +493,57 @@ This example demonstrates both creator types: a Nostr-native creator (using a `p
 In this example:
 - The first creator has a Nostr pubkey, so only a `p` tag with role `"creator"` is used. Their name and metadata are resolved from their kind:0 profile.
 - The second creator (Prof. John Doe) has no Nostr identity, so the `creator:*` flattened tags provide their name, type, affiliation, and ORCID.
+
+### Example 3: Resource with Extension Namespace
+
+This example demonstrates the `ext:` namespace, used here to attach an EKW-specific `bistum` (diocese) facet that is not part of AMB-core. The same flattening grammar applies; the only difference is the leading `ext:<ns>:` prefix.
+
+```json
+{
+  "kind": 30142,
+  "id": "9f4c2a1b8e7d3a6f5c2b9d8e7a1c4f3b8e2d9a7c5f1b3e8d6a4c2f9b7e5d3a1c",
+  "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "created_at": 1764000000,
+  "tags": [
+    ["d", "ekw.de/resources/abc"],
+    ["type", "LearningResource"],
+    ["name", "Religiöse Bildung im Bistum Hannover"],
+    ["about:id", "https://w3id.org/kim/hochschulfaechersystematik/n270"],
+    ["about:prefLabel:de", "Theologie"],
+    ["about:type", "Concept"],
+    ["ext:ekw:bistum:id", "https://w3id.org/kim/ekw/bistum/hannover"],
+    ["ext:ekw:bistum:prefLabel:de", "Hannover"],
+    ["ext:ekw:bistum:type", "Concept"],
+    ["ext:ekw:bistum:id", "https://w3id.org/kim/ekw/bistum/wuerttemberg"],
+    ["ext:ekw:bistum:prefLabel:de", "Württemberg"],
+    ["ext:ekw:bistum:type", "Concept"]
+  ],
+  "content": "",
+  "sig": "..."
+}
+```
+
+On reverse conversion to AMB metadata, the `ext` block surfaces as a sibling object (it MUST NOT be folded into AMB-core):
+
+```json
+{
+  "type": ["LearningResource"],
+  "name": "Religiöse Bildung im Bistum Hannover",
+  "about": [
+    {"id": "https://w3id.org/kim/hochschulfaechersystematik/n270", "prefLabel": {"de": "Theologie"}, "type": "Concept"}
+  ],
+  "ext": {
+    "ekw": {
+      "bistum": [
+        {"id": "https://w3id.org/kim/ekw/bistum/hannover", "prefLabel": {"de": "Hannover"}, "type": "Concept"},
+        {"id": "https://w3id.org/kim/ekw/bistum/wuerttemberg", "prefLabel": {"de": "Württemberg"}, "type": "Concept"}
+      ]
+    }
+  }
+}
+```
+
+Consumers that don't recognize the `ekw` namespace ignore it; consumers that do can render `bistum` generically (one row per concept, label resolved by language).
 
 ## Tools
 
