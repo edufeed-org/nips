@@ -7,8 +7,9 @@ Funded Didactic Projects, Teaching Measures, and Project Publications
 
 ## Abstract
 
-This NIP defines three addressable event kinds for representing **funded
-didactic projects** (and their byproducts) on Nostr:
+This NIP defines two addressable event kinds for representing **funded
+didactic projects** (and their byproducts) on Nostr, and delegates the third
+byproduct — project publications — to [NKBIP-01] kind `30040`:
 
 | Kind   | Entity        | Schema-type                     |
 |-------:|---------------|---------------------------------|
@@ -26,7 +27,7 @@ This NIP is a companion to [NIP-AMB][amb]:
   textbooks, OER). It does not have a slot for the funded project that
   produced a resource, nor for the documented teaching intervention that a
   resource arose from, nor for the scholarly publication that reflects on it.
-- NIP-DIDACTIC fills those gaps. The three kinds reuse NIP-AMB's flattening
+- NIP-DIDACTIC fills those gaps. The two kinds reuse NIP-AMB's flattening
   grammar and Nostr-native tag conventions so AMB-aware tooling can be
   extended uniformly.
 - Vocabularies for the controlled fields below are published per
@@ -53,7 +54,8 @@ flattened `*:name` fallbacks carry display metadata only, not identity.
 
 ## Shared Conventions
 
-All three kinds inherit the NIP-AMB flattening grammar:
+This section covers the two native kinds, Projekt (`30143`) and Maßnahme
+(`30144`); both inherit the NIP-AMB flattening grammar:
 
 - **`d` tag** — stable identifier, addressed as `kind:pubkey:d`.
 - **`type` tag** — human-readable schema-type label. Authoritative routing is
@@ -79,6 +81,12 @@ All three kinds inherit the NIP-AMB flattening grammar:
 - **`ext:<ns>:<facet>:<sub>`** — extension namespace for source-specific
   fields not standardised here, exactly as in NIP-AMB. The transferkiosk
   producer uses `ext:tk:*`.
+
+Publications (delegated to [NKBIP-01] kind `30040`, see below) follow
+NKBIP-01's own conventions instead: the `content` duplication rule above does
+NOT apply to them (their `content` field MUST be empty), and their `i` tag
+uses NIP-73-style code form (`doi:10.x/…`) rather than the identifier-URI
+convention above.
 
 ### Concept references (flat-concept triple)
 
@@ -112,8 +120,10 @@ the `a` and still group by `<facet>:id`.
 
 ### Cross-entity relations
 
-A relation between two events of any of the three kinds is expressed with
-an `a` tag whose fourth element is a relationship marker:
+A relation between two events — either of the two native kinds, or between a
+delegated NKBIP-01 publication event (kind `30040`) and a native Projekt/
+Maßnahme — is expressed with an `a` tag whose fourth element is a
+relationship marker:
 
 | Marker         | Direction                | Meaning                                                  |
 |----------------|--------------------------|----------------------------------------------------------|
@@ -122,8 +132,8 @@ an `a` tag whose fourth element is a relationship marker:
 | `isOutputOf`   | Publikation (30040) → Projekt  | The publication is an output of the referenced project.  |
 | `documents`    | Publikation (30040) → Maßnahme | The publication reports on a specific measure.           |
 
-The first three reuse NIP-AMB vocabulary. `isOutputOf` and `documents`
-are introduced by this NIP.
+`isPartOf` and `hasPart` reuse NIP-AMB vocabulary; `isOutputOf` and
+`documents` are introduced by this NIP.
 
 ## Kind 30143 — Projekt
 
