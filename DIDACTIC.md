@@ -14,7 +14,7 @@ didactic projects** (and their byproducts) on Nostr:
 |-------:|---------------|---------------------------------|
 | `30143` | Projekt       | `Project`                       |
 | `30144` | Maßnahme      | `TeachingMeasure`               |
-| `30145` | Publikation   | `ScholarlyArticle` (or similar) |
+| —      | Publikation   | Uses [NKBIP-01] kind `30040` (see below) |
 
 The first producer of these kinds is [transferkiosk.net][tk] (the Stiftung
 Innovation in der Hochschullehre / *Stil* portal), but the shapes are generic
@@ -36,6 +36,7 @@ This NIP is a companion to [NIP-AMB][amb]:
 [tk]: https://transferkiosk.net/
 [amb]: AMB.md
 [vocab]: VOCAB.md
+[NKBIP-01]: https://njump.me/naddr1qvzqqqrcvypzplfq3m5v3u5r0q9f255fdeyz8nyac6lagssx8zy4wugxjs8ajf7pqqyxu6mzd9cz6vp3tn64lg
 
 ### Authorship and trust model
 
@@ -118,8 +119,8 @@ an `a` tag whose fourth element is a relationship marker:
 |----------------|--------------------------|----------------------------------------------------------|
 | `isPartOf`     | Maßnahme → Projekt; sub-Projekt → Verbund-Projekt | The subject belongs inside the referenced object.    |
 | `hasPart`      | Inverse of `isPartOf`    | Optional; mostly used by indexers.                       |
-| `isOutputOf`   | Publikation → Projekt    | The publication is an output of the referenced project.  |
-| `documents`    | Publikation → Maßnahme   | The publication reports on a specific measure.           |
+| `isOutputOf`   | Publikation (30040) → Projekt  | The publication is an output of the referenced project.  |
+| `documents`    | Publikation (30040) → Maßnahme | The publication reports on a specific measure.           |
 
 The first three reuse NIP-AMB vocabulary. `isOutputOf` and `documents`
 are introduced by this NIP.
@@ -300,44 +301,33 @@ Each follows the flat-concept-triple grammar (`ext:tk:<facet>:id`,
 
 - `["a", "30143:<pub>:<d>", "<relay>", "isPartOf"]` — REQUIRED, to parent Projekt.
 
-## Kind 30145 — Publikation
+## Publikationen (NKBIP-01 kind 30040)
 
-A bibliographic record for a scholarly output, typically an output of a
-Projekt.
+Publications are **not** a NIP-DIDACTIC kind. A Publikation is published as
+a standard [NKBIP-01] *Curated Publications* index (kind `30040`,
+`naddr…tn64lg`, d-tag `nkbip-01`): `d` (lowercase letters/digits/hyphens,
+deterministic `tk-p{projekt}-pub{id}` for Transferkiosk imports), `title`,
+`type` (`academic`, or `book` for monographs), `summary` (abstract; the
+event content MUST be empty), plain `author` tags, `i` external identifier
+in code form (`doi:10.xxxx/…`), `source` (readable landing page),
+`published_on`, `published_by`, and AMB-style `creator:*` runs
+(`creator:type`/`creator:name`/`creator:honorificPrefix`) mirroring
+edufeed-app's 30040 dialect.
 
-### Required tags
+NKBIP-01 permits additional tags; Transferkiosk publications carry these
+extensions:
 
-| Tag          | Notes                                                              |
-|--------------|--------------------------------------------------------------------|
-| `d`          | Stable identifier. Prefer the DOI URI when present, else source URL. |
-| `type`       | `"ScholarlyArticle"` (or `"Book"`, `"Chapter"`, etc).              |
-| `name`       | Publication title.                                                 |
-| `description`| Abstract (Kurzbeschreibung). Also duplicated into `content`.       |
+| Tag                      | Meaning                                                |
+|--------------------------|--------------------------------------------------------|
+| `additionalType`         | schema.org type: `ScholarlyArticle`, `Book`, `Chapter`. |
+| `editor:name/:type/:honorificPrefix` | Herausgeber:innen (run per person).        |
+| `publicationLocation`    | Ort.                                                   |
+| `pageRange`              | Umfang / Seitenzahlen.                                 |
+| `publicationType:*`      | Publikationsart concept triple (vocab `tk-publikationsart`). |
+| `["a", "30143:<pub>:<d>", "<relay>", "isOutputOf"]` | REQUIRED parent-Projekt link. |
 
-### Optional tags
-
-| Tag                       | Source                                            |
-|---------------------------|---------------------------------------------------|
-| `inLanguage`              | BCP47 code.                                       |
-| `datePublished`           | ISO 8601; if only year is known, use `YYYY`.      |
-| `publicationType:id` etc. | Publikationsart (concept triple, vocab `tk-publikationsart`). |
-| `publisher:name`          | Verlag.                                           |
-| `publicationLocation`     | Ort.                                              |
-| `pageRange`               | Umfang / Seitenzahlen.                            |
-| `author:name`             | Author display name (when no Nostr identity).     |
-| `author:id`               | ORCID URI when known.                             |
-| `author:type`             | `"Person"`.                                       |
-| `p` (role `"author"`)     | Nostr-identified authors.                         |
-| `editor:name` / `editor:id` / `editor:type` | Herausgeber:innen.              |
-| `license:id`              | License URI (CC URI when applicable).             |
-| `r`                       | DOI, source URL.                                  |
-| `i`                       | DOI URI, ISBN, …                                  |
-
-### Relations
-
-- `["a", "30143:<pub>:<d>", "<relay>", "isOutputOf"]` — to parent Projekt.
-- `["a", "30144:<pub>:<d>", "<relay>", "documents"]` — OPTIONAL, to a
-  specific Maßnahme the publication reports on.
+Historical note: kind `30145` served this role until 2026-07; those events
+were deleted (NIP-09) and re-published as kind `30040`.
 
 ## Querying
 
@@ -357,7 +347,12 @@ Projekt.
 }
 
 // all publications that came out of any project by this publisher
-{"kinds": [30145], "authors": ["<pubkey>"]}
+{"kinds": [30040], "authors": ["<pubkey>"]}
+
+// publications of a specific project (NIP-50 field syntax; the relay
+// resolves partOf against its facet — a bare #partOf tag filter is not
+// supported)
+{"kinds": [30040], "search": "partOf:30143:<pubkey>:<project-d>"}
 
 // projects with a specific subject area
 {"kinds": [30143], "#about:id": ["https://transferkiosk.net/vocab/tk-faechergruppen/100004"]}
@@ -377,8 +372,8 @@ nak req -k 30143 -a $PUB -d https://transferkiosk.net/p/101553 wss://relay.edufe
 # all measures of a project
 nak req -k 30144 -a $PUB --tag a=30143:$PUB:https://transferkiosk.net/p/101553 wss://relay.edufeed.org
 
-# publications by subject (DOI)
-nak req -k 30145 --tag i=https://doi.org/10.3224/gender.v17i3.02 wss://relay.edufeed.org
+# publication by DOI (code form)
+nak req -k 30040 --search "doi:10.3224/gender.v17i3.02" wss://relay.edufeed.org
 ```
 
 ## Reverse Conversion (Nostr event → JSON-LD-ish)
@@ -408,7 +403,7 @@ Mirrors NIP-AMB's reverse-conversion section:
 
 - [transferkiosk crawler + converter](https://git.edufeed.org/edufeed/edufeed-data/src/branch/master/transferkiosk)
   — Python reference: `crawl.py` (raw fetch), `extract-vocabs.py`,
-  `publish-vocabs.py` (NIP-VOCAB publish), `convert.py` (raw → 30143/30144/30145).
+  `publish-vocabs.py` (NIP-VOCAB publish), `convert.py` (raw → 30143/30144 + NKBIP-01 30040).
 - [edufeed amb-relay](https://git.edufeed.org/edufeed/amb-relay) — generic
   Nostr relay that already supports addressable events in this range.
 
