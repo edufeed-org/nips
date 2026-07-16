@@ -30,7 +30,8 @@ This NIP follows Nostr conventions where they align with AMB requirements:
 
 ### Flattening Rules
 
-1. **Simple properties**: Map directly to tag}`
+1. **Simple properties**: Map directly to `["<key>", "<value>"]` tags
+   - AMB: `{"name": "Resource Title"}`
    - Nostr: `["name", "Resource Title"]`
 
 2. **Nested objects**: Flatten using `:` delimiter
@@ -55,7 +56,7 @@ This is how we convert each property of the AMB:
 
 #### General:
 
-- `id` → `["d", <id>]` (special case: use Nostr's `d` tag as identifier)
+- `id` → `["d", <id>]` (special case: use Nostr's `d` tag as identifier). The `d` value SHOULD be the resource's canonical, dereferenceable URL when one exists (the AMB spec describes `id` as a dereferenceable HTTP URI). Nostr-native resources without an external URL MAY use an arbitrary stable slug — see the reverse-conversion rules for how the AMB `id` is derived in that case.
 - `type` → `["type", <value>]` (repeat for multiple types)
 - `name` → `["name", <value>]`
 - `description` → `["description", <value>]` AND `"content": <value>` (duplicated for client compatibility and relay queryability)
@@ -79,6 +80,8 @@ This is how we convert each property of the AMB:
 
 - `creator` (array of Person/Organization objects) → For each creator, use **one** of the following (never both for the same person):
   - **Nostr-native (creator has a Nostr pubkey)**: `["p", <pubkey-hex>, <relay-hint>, "creator"]` — no additional `creator:*` tags for this person. Their name and metadata are resolved from their kind:0 profile.
+    - **Detection**: If a creator object's `id` is a `nostr:` URI per [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md) encoding an `npub` or `nprofile`, converters MUST decode it and emit the `p` tag form instead of flattened `creator:*` tags. (This is valid AMB input: the AMB schema constrains `creator.id` only to `format: uri`; the ORCID/GND/Wikidata/ROR list is a SHOULD-level recommendation.)
+    - **Relay hint precedence**: relay embedded in the `nprofile` (first entry) → converter-configured default → empty string.
   - **External (no Nostr identity)**:
     - `["creator:id", <uri>]` (optional, e.g., ORCID, GND)
     - `["creator:name", <name>]`
@@ -87,7 +90,10 @@ This is how we convert each property of the AMB:
     - `["creator:affiliation:id", <uri>]` (optional)
     - `["creator:affiliation:name", <name>]` (optional)
     - `["creator:affiliation:type", "Organization"]` (optional)
-- `contributor` (array of Person/Organization objects) → Same structure as `creator`, using role `"contributor"` in the `p` tag
+- `contributor` (array of Person/Organization objects) → Same structure as `creator` (including `nostr:` URI detection), using role `"contributor"` in the `p` tag
+
+  > **Known limitation:** A person with both a Nostr identity and external identifiers (e.g., an ORCID) is represented by the `p` tag alone; their external identifier, `affiliation`, and `honorificPrefix` are not carried in the event, since kind:0 profiles have no standard fields for them. This deviates from the AMB SHOULD-level recommendation to reference ORCID/GND/Wikidata/ROR and is accepted as a trade-off for having exactly one unambiguous representation per person.
+
 - `dateCreated` → `["dateCreated", <ISO8601Date>]`
 - `datePublished` → `["datePublished", <ISO8601Date>]`
 - `dateModified` → `["dateModified", <ISO8601Date>]`
@@ -99,6 +105,8 @@ This is how we convert each property of the AMB:
   - `["funder:id", <uri>]` (optional)
   - `["funder:name", <name>]`
   - `["funder:type", <"Person"|"Organization"|"FundingScheme">]`
+
+> **Note:** No `p`-tag role is defined for `publisher` or `funder`. A `nostr:` URI in their `id` is emitted verbatim as the flattened `publisher:id`/`funder:id` value.
 
 #### Costs and Rights:
 
@@ -230,7 +238,7 @@ To convert a Nostr event back to AMB metadata:
 4. **Handle arrays**: Multiple tags with identical keys become array elements
 5. **Preserve order**: Array order is determined by tag order in the event
 6. **Special mappings**:
-   - `d` tag → `id` property
+   - `d` tag → `id` property: if the `d` value is an absolute URI, use it verbatim; otherwise derive the `id` as `nostr:<naddr1...>` (the [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) `naddr` encoding of kind `30142`, the event's `pubkey`, and the `d` value). Consumers MAY substitute a dereferenceable landing-page URL they control for the derived `nostr:` URI.
    - `content` field → `description` property (prefer over `description` tag if both exist)
    - `t` tags → `keywords` array
    - `r` tags → Nostr-native supplementary references (no AMB equivalent; not included in AMB output)
@@ -238,15 +246,19 @@ To convert a Nostr event back to AMB metadata:
    - `a` tags with role → Nostr-native relation (see below)
    - Convert string booleans to actual booleans
    - Parse ISO8601 dates if needed for validation
-7. **Nostr-native `p` tags** (creator/contributor): For each `["p", <pubkey-hex>, <relay-hint>, <role>]` where `<role>` is `"creator"` or `"contributor"`, clients MUST fetch the user's kind:0 profile (using the relay hint and NIP-65) to resolve their `name`. Map to an AMB creator/contributor object:
+7. **Add `@context`**: The output MUST include `"@context": ["https://w3id.org/kim/amb/context.jsonld", {"@language": "<lang>"}]` — the AMB schema requires `@context` at the top level. The language is implementation-configurable (default: `de`).
+8. **Nostr-native `p` tags** (creator/contributor): For each `["p", <pubkey-hex>, <relay-hint>, <role>]` where `<role>` is `"creator"` or `"contributor"`, clients SHOULD fetch the user's kind:0 profile (using the relay hint and NIP-65) to resolve their `name`. Map to an AMB creator/contributor object:
    ```json
    {
      "name": "<name from kind:0 profile>",
+     "type": "Person",
      "id": "nostr:<nprofile1...>"
    }
    ```
    The `id` uses the NIP-19 `nprofile` encoding (which includes the pubkey and relay hint(s)) prefixed with `nostr:` per NIP-21. The `type` (`"Person"` or `"Organization"`) should be determined from the kind:0 profile if possible; implementations MAY default to `"Person"` when unknown.
-8. **Nostr-native `a` tags** (relations): For each `["a", "30142:<pubkey>:<d-value>", <relay-hint>, <role>]` where `<role>` is `"isBasedOn"`, `"isPartOf"`, or `"hasPart"`, map to the corresponding AMB relation object:
+
+   If the kind:0 profile cannot be fetched (or the converter operates offline), `name` MUST fall back to the NIP-19 `npub` encoding of the pubkey — the AMB schema requires `name` and `type` on every creator/contributor object, so output must never omit them. Profile-aware clients SHOULD replace the fallback with the resolved profile name once available.
+9. **Nostr-native `a` tags** (relations): For each `["a", "30142:<pubkey>:<d-value>", <relay-hint>, <role>]` where `<role>` is `"isBasedOn"`, `"isPartOf"`, or `"hasPart"`, map to the corresponding AMB relation object:
    ```json
    {
      "id": "nostr:<naddr1...>",
@@ -254,7 +266,7 @@ To convert a Nostr event back to AMB metadata:
    }
    ```
    The `id` uses the NIP-19 `naddr` encoding (which includes kind, pubkey, d-tag, and relay hint(s)) prefixed with `nostr:` per NIP-21.
-9. **Extension tags (`ext:` prefix)**: Group tags whose key starts with `ext:` by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`). Place the resulting array of concept objects under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
+10. **Extension tags (`ext:` prefix)**: Group tags whose key starts with `ext:` by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`). Place the resulting array of concept objects under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
 
 
 ## How to query for AMB nostr-events in supporting relays
@@ -371,7 +383,7 @@ nak req -k 30142 ws://relay.example.com
 nak req -a <pubkey-hex> -k 30142 ws://relay.example.com
 
 # By d-tag
-nak req -d "oersi.org/resources/example123" -k 30142 ws://relay.example.com
+nak req -d "https://oersi.org/resources/example123" -k 30142 ws://relay.example.com
 
 # Time range
 nak req --since 1700000000 --until 1800000000 -k 30142 ws://relay.example.com
@@ -419,7 +431,7 @@ nak req --search "forschung publisher.name:e-teaching.org" -k 30142 ws://relay.e
   "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
   "created_at": 1743419457,
   "tags": [
-    ["d", "oersi.org/resources/aHR0cHM6Ly9hdi50aWIuZXUvbWVkaWEvNjY5ODM=11"],
+    ["d", "https://oersi.org/resources/aHR0cHM6Ly9hdi50aWIuZXUvbWVkaWEvNjY5ODM=11"],
     ["type", "LearningResource"],
     ["name", "Pythagorean Theorem Video"],
     ["description", "An introductory video explaining the Pythagorean theorem"],
@@ -505,7 +517,7 @@ This example demonstrates the `ext:` namespace, used here to attach an EKW-speci
   "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
   "created_at": 1764000000,
   "tags": [
-    ["d", "ekw.de/resources/abc"],
+    ["d", "https://ekw.de/resources/abc"],
     ["type", "LearningResource"],
     ["name", "Religiöse Bildung im Bistum Hannover"],
     ["about:id", "https://w3id.org/kim/hochschulfaechersystematik/n270"],
@@ -557,7 +569,7 @@ You can use [`nak`](https://github.com/fiatjaf/nak) to create AMB events. There 
 # Simple resource with Nostr-native t tags
 nak event \
   -k 30142 \
-  --tag d="oersi.org/resources/example123" \
+  --tag d="https://oersi.org/resources/example123" \
   --tag type="LearningResource" \
   --tag name="Pythagorean Theorem Video" \
   --tag description="An introductory video" \
@@ -603,8 +615,7 @@ echo '{
 ## References
 
 - [AMB Specification](https://dini-ag-kim.github.io/amb/latest/)
-- [Nostr Protocol (NIP-01)](https://github.com/nostr-protocol/nips/blob/master/01.md)
-- [Addressable Events (NIP-33)](https://github.com/nostr-protocol/nips/blob/master/33.md)
+- [Nostr Protocol (NIP-01)](https://github.com/nostr-protocol/nips/blob/master/01.md) - including addressable events (formerly NIP-33, merged into NIP-01)
 - [bech32-encoded entities (NIP-19)](https://github.com/nostr-protocol/nips/blob/master/19.md) - `nprofile` and `naddr` encodings for reverse conversion
 - [`nostr:` URI scheme (NIP-21)](https://github.com/nostr-protocol/nips/blob/master/21.md) - `nostr:` prefix for bech32 identifiers in AMB output
 - [Extra Metadata Fields and Tags (NIP-24)](https://github.com/nostr-protocol/nips/blob/master/24.md) - `r` and `t` tag conventions
