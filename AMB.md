@@ -145,13 +145,16 @@ This is how we convert each property of the AMB:
   - `["interactivityType:id", <uri>]`
   - `["interactivityType:prefLabel:lang", <label>]` (optional)
   - `["interactivityType:type", "Concept"]` (optional)
+- `suggestedAge` (object with integer bounds; AMB requires at least one of `minValue`/`maxValue`) →
+  - `["suggestedAge:minValue", <integer>]` (optional)
+  - `["suggestedAge:maxValue", <integer>]` (optional)
 
 #### Relations:
 
 - `isBasedOn` (array of objects) → Repeat for each:
   - **Nostr-native (if referenced resource is addressable AMB event)**: `["a", "30142:<pubkey>:<d-value>", <relay>, "isBasedOn"]`
   - **Fallback (for external URIs)**:
-    - `["isBasedOn:id", <uri>]`
+    - `["isBasedOn:id", <uri>]` (omit when the relation has no `id` — AMB allows name-only `isBasedOn` references; never emit a literal `"undefined"`)
     - `["isBasedOn:name", <name>]` (optional)
 - `isPartOf` (array of objects) → Repeat for each:
   - **Nostr-native (if referenced resource is addressable AMB event)**: `["a", "30142:<pubkey>:<d-value>", <relay>, "isPartOf"]`
@@ -244,9 +247,12 @@ To convert a Nostr event back to AMB metadata:
    - `r` tags → Nostr-native supplementary references (no AMB equivalent; not included in AMB output)
    - `p` tags with role → Nostr-native creator/contributor (see below)
    - `a` tags with role → Nostr-native relation (see below)
-   - Convert string booleans to actual booleans
+   - Convert string booleans to actual booleans (e.g. `isAccessibleForFree`)
+   - Convert numeric strings back to integers where the AMB schema requires numbers (`suggestedAge:minValue`/`suggestedAge:maxValue`)
    - Parse ISO8601 dates if needed for validation
 7. **Add `@context`**: The output MUST include `"@context": ["https://w3id.org/kim/amb/context.jsonld", {"@language": "<lang>"}]` — the AMB schema requires `@context` at the top level. The language is implementation-configurable (default: `de`).
+
+   > **Known limitation:** Custom or extended `@context` entries from a source AMB document (e.g. an additional `"https://schema.org"` entry) are not stored in the event and therefore cannot be restored on reverse conversion — the canonical two-element context is always reconstructed. Documents using only the standard AMB context round-trip losslessly.
 8. **Nostr-native `p` tags** (creator/contributor): For each `["p", <pubkey-hex>, <relay-hint>, <role>]` where `<role>` is `"creator"` or `"contributor"`, clients SHOULD fetch the user's kind:0 profile (using the relay hint and NIP-65) to resolve their `name`. Map to an AMB creator/contributor object:
    ```json
    {
