@@ -5,6 +5,7 @@ reverse chronological order.
 
 | Date        | Commit    | NIP      | Change |
 | ----------- | --------- | -------- | ------ |
+| 2026-07-16  | [37fe6a4](https://git.edufeed.org/edufeed/nips/commit/37fe6a4) | [AMB](AMB.md) | creator/contributor objects with a `nostr:` URI `id` (npub/nprofile) must now be converted to `p` tags instead of flattened `creator:*`/`contributor:*` tags; reverse conversion must add `@context`, `type`, and an npub `name` fallback, and derives `nostr:<naddr>` ids for non-URI `d` tags |
 | 2025-02-14  | [81908b6e](https://github.com/nostr-protocol/nips/commit/81908b6e) | [07](07.md), [46](46.md), [55](55.md) | `getRelays` and `get_relays` were removed |
 | 2025-02-07  | [0023ca81](https://github.com/nostr-protocol/nips/commit/0023ca81) | [10](10.md) | `"mention"` marker was removed |
 | 2025-01-31  | [6a4b125a](https://github.com/nostr-protocol/nips/commit/6a4b125a) | [71](71.md) | video events were changed to regular |
