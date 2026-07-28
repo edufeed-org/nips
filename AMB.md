@@ -212,10 +212,10 @@ Examples:
 
 Properties not standardized in AMB-core SHOULD use the `ext` namespace. The shape mirrors AMB-core's flattening, with one extra leading segment that identifies the publishing authority. This enables non-AMB-conformant metadata to coexist with AMB-core in a single event without collision risk.
 
-- Tag form: `["ext:<ns>:<facet>:<sub>", "<value>"]`
-  - `<ns>` — namespace authority slug. MUST NOT contain `:`. Lowercase, hyphen-separated, stable per author. Examples: `ekw`, `oersi`, `edufeed-amb-full`.
+- Tag form: `["ext:<ns>:<facet>", "<value>"]` (scalar) or `["ext:<ns>:<facet>:<sub>", "<value>"]` (structured)
+  - `<ns>` — namespace authority slug. MUST NOT contain `:`. Lowercase; `.` and `-` are permitted. Stable per authority. Examples: `ekw`, `oersi`, `org.edufeed.ekw`.
   - `<facet>` — field name within the namespace. MUST NOT contain `:`. Examples: `bistum`, `ressourcentyp`, `fach`.
-  - `<sub>` — property suffix, identical to AMB-core: `id`, `type`, `prefLabel:<lang>`, `name`.
+  - `<sub>` — property suffix, identical to AMB-core, drawn from a **closed set**: `id`, `type`, `name`, or `prefLabel:<lang>`. A key with no `<sub>` is a scalar (see below).
 - Example (single concept):
   - `["ext:ekw:bistum:id", "https://w3id.org/kim/ekw/bistum/hannover"]`
   - `["ext:ekw:bistum:prefLabel:de", "Hannover"]`
@@ -223,13 +223,65 @@ Properties not standardized in AMB-core SHOULD use the `ext` namespace. The shap
 - Multiple values for the same `<ns>:<facet>` pair repeat the tag triple, exactly as AMB-core arrays do (boundary on repeated `id`).
 - Implementations MUST NOT fold ext entries into AMB-core properties on reverse conversion. They surface as a sibling `ext` object — see Example 3 and the reverse-conversion section.
 
+##### Namespace selection and collision avoidance
+
+`<ns>` is exactly **one** colon-free segment. Authorship, form identity, and deployment MUST NOT be encoded inside `<ns>`; a key such as `ext:30168:<pubkey>:<d-tag>:<facet>:id` is **invalid** under this NIP.
+
+The rationale is the same as [NIP-32](https://github.com/nostr-protocol/nips/blob/master/32.md), which keeps a namespace in a separate tag position rather than inside the tag name: a single-segment `<ns>` lets the same logical facet unify across authors, forks and deployments of the same vocabulary, which is what makes `#ext:<ns>:<facet>:id` a usable filter. Multi-segment namespaces are also not parseable without out-of-band knowledge — see the parsing rule below.
+
+To avoid collisions without a central registry, authorities SHOULD use **reverse domain name notation**, as NIP-32 recommends for `l` namespaces:
+
+- `ext:org.edufeed.ekw:bistum:id`
+- `ext:org.edufeed.ekw.konfi:zielgruppen:id`
+
+A sub-vocabulary is a namespace of its own (`org.edufeed.ekw.konfi`), never a colon inside `<facet>`. Short unqualified slugs (`ekw`, `oersi`) remain valid and are common in existing data, but new authorities SHOULD prefer reverse-DNS.
+
+##### Scalar ext properties
+
+An ext key with no `<sub>` carries a plain literal value:
+
+- `["ext:ekw:bibleReference", "Mt 5,1-12"]`
+- `["ext:ekw:methodOther", "Bibliolog"]`
+
+Repeated keys form an array of strings. On reverse conversion these surface as `output.ext.<ns>.<facet>` holding an array of strings, alongside — and structurally distinct from — concept facets, which hold an array of objects. Consumers MUST support both forms and MUST NOT discard a key merely because it lacks a `<sub>`.
+
+##### Parsing rule (normative)
+
+Consumers MUST parse ext keys **left-anchored** on `:`, with fixed arity:
+
+```
+ext-key = "ext" ":" ns ":" facet [ ":" sub ]
+sub     = "id" / "type" / "name" / "prefLabel" ":" lang
+```
+
+1. Split the key on `:`. The first segment MUST be `ext`.
+2. The second segment is `<ns>`; the third is `<facet>`. Both MUST be non-empty.
+3. Everything after the third segment, rejoined with `:`, is `<sub>`. If absent, the tag is a scalar.
+4. If `<sub>` is present it MUST match the closed set above. `prefLabel` MUST be followed by exactly one language segment.
+5. A key that does not match this grammar MUST be ignored — consumers MUST NOT guess a segmentation, and MUST NOT absorb surplus segments into `<ns>`, `<facet>` or `<sub>`. Implementations SHOULD emit a warning so malformed producers are discoverable.
+
+Rule 5 is load-bearing. Right-anchored heuristics ("the last segment is the sub, everything before it is the namespace") appear reasonable but assign different `(ns, facet)` pairs than left-anchored parsing whenever a key carries surplus segments, so two conformant-looking implementations can derive different metadata from identical bytes.
+
+Producers MUST NOT emit keys outside this grammar. In particular, `<ns>` and `<facet>` MUST be checked for `:` before serialization.
+
 ##### Form-emitted ext (Edufeed convention)
 
-When a kind 30168 form produces ext fields, `<ns>` is the form's `d`-tag (a colon-free slug per Edufeed convention). The form-author's pubkey is **not** in `<ns>` — it's discoverable via the resource's `["a", "30168:<pub>:<d>", "<relay>", "form"]` back-ref. If two authors choose the same `<ns>`, the back-ref disambiguates which form was used; clients can layer `#a 30168:<pub>:<d>` to narrow.
+When a kind 30168 form produces ext fields, `<ns>` is derived from the form's `d`-tag (a colon-free slug per Edufeed convention), optionally reverse-DNS qualified — e.g. a form with `d`-tag `amb-basic` emits `ext:amb-basic:<fieldId>:id` or `ext:org.edufeed.forms.amb-basic:<fieldId>:id`. The form-author's pubkey is **not** in `<ns>` — it's discoverable via the resource's `["a", "30168:<pub>:<d>", "<relay>", "form"]` back-ref. If two authors choose the same `<ns>`, the back-ref disambiguates which form was used; clients can layer `#a 30168:<pub>:<d>` to narrow.
 
-##### Migrating legacy unprefixed namespaces
+##### Migrating legacy shapes
 
-Some events in the wild use a de-facto `<ns>:<facet>:<sub>` shape without the `ext:` prefix (notably from `amb-nostr-converter` and EKW pipelines). Producers SHOULD migrate to the prefixed `ext:<ns>:<facet>:<sub>` form. Consumers MAY accept the unprefixed form for backward compatibility during a transition period, but the `ext:` prefix is the only forward-compatible shape because AMB-core may introduce new top-level properties that would otherwise collide.
+Two non-conformant shapes exist in deployed data and both SHOULD be migrated.
+
+**Unprefixed namespaces.** Some events use a de-facto `<ns>:<facet>:<sub>` shape without the `ext:` prefix (notably from `amb-nostr-converter` and EKW pipelines). Producers SHOULD migrate to the prefixed form. Consumers MAY accept the unprefixed form for backward compatibility during a transition period, but the `ext:` prefix is the only forward-compatible shape because AMB-core may introduce new top-level properties that would otherwise collide.
+
+**Surplus segments.** Keys carrying more than one namespace or facet segment — `ext:<ns>:<sub-vocabulary>:<facet>:<sub>` or `ext:30168:<pubkey>:<d-tag>:<facet>:<sub>` — predate the parsing rule above and are ambiguous by construction. Producers MUST migrate them by promoting the surplus segment into `<ns>`:
+
+| Legacy | Conformant |
+| --- | --- |
+| `ext:ekw:konfi:zielgruppen:id` | `ext:org.edufeed.ekw.konfi:zielgruppen:id` |
+| `ext:30168:<pub>:amb-basic:fach:id` | `ext:amb-basic:fach:id` (pubkey moves to the `a` back-ref) |
+
+Because the two segmentations are indistinguishable to a consumer, there is no safe backward-compatibility shim: per rule 5, consumers MUST ignore these keys rather than guess. Migration is a re-publish of the affected events.
 
 ## How to convert an AMB nostr-event to AMB metadata
 
@@ -272,7 +324,7 @@ To convert a Nostr event back to AMB metadata:
    }
    ```
    The `id` uses the NIP-19 `naddr` encoding (which includes kind, pubkey, d-tag, and relay hint(s)) prefixed with `nostr:` per NIP-21.
-10. **Extension tags (`ext:` prefix)**: Group tags whose key starts with `ext:` by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`). Place the resulting array of concept objects under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
+10. **Extension tags (`ext:` prefix)**: Parse each key whose first segment is `ext` using the normative left-anchored rule in *Extension Properties*, ignoring any key that does not match. Group the surviving tags by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`); keys with no `<sub>` yield an array of strings instead. Place the result under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
 
 
 ## How to query for AMB nostr-events in supporting relays
@@ -305,6 +357,7 @@ In addition to standard single-letter tag filters, AMB-supporting relays SHOULD 
 | `#audience:id` | Filter by target audience URI |
 | `#ext:<ns>:<facet>:id` | Filter by extension property URI within a namespace |
 | `#ext:<ns>:<facet>:prefLabel:<lang>` | Filter by extension property label |
+| `#ext:<ns>:<facet>` | Filter by scalar extension property value |
 
 Any colon-delimited tag name present in AMB events can be used as a filter. Multiple values for the same tag are matched with OR logic. Different tag filters are combined with AND logic.
 
