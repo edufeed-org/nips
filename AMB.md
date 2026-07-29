@@ -243,7 +243,31 @@ An ext key with no `<sub>` carries a plain literal value:
 - `["ext:ekw:bibleReference", "Mt 5,1-12"]`
 - `["ext:ekw:methodOther", "Bibliolog"]`
 
-Repeated keys form an array of strings. On reverse conversion these surface as `output.ext.<ns>.<facet>` holding an array of strings, alongside — and structurally distinct from — concept facets, which hold an array of objects. Consumers MUST support both forms and MUST NOT discard a key merely because it lacks a `<sub>`.
+Repeated keys form an array of strings. On reverse conversion these surface as `output.ext.<ns>.<facet>` holding an array of strings, alongside concept facets, which hold an array of objects. Consumers MUST support both forms and MUST NOT discard a key merely because it lacks a `<sub>`.
+
+##### Mixed facets
+
+A `<ns>:<facet>` pair MAY carry concept tags and scalar tags at the same time. This is the ordinary shape for a field that offers a controlled vocabulary *and* accepts a free-text value, where an author uses both:
+
+- `["ext:org.edufeed.ekw.konfi:zeitstruktur:id", "https://w3id.org/kim/ekw/zeit/doppelstunde"]`
+- `["ext:org.edufeed.ekw.konfi:zeitstruktur:prefLabel:de", "Doppelstunde"]`
+- `["ext:org.edufeed.ekw.konfi:zeitstruktur:type", "Concept"]`
+- `["ext:org.edufeed.ekw.konfi:zeitstruktur", "2 x 90 Min."]`
+
+`output.ext.<ns>.<facet>` is therefore a **heterogeneous array** — objects and strings may both appear in it:
+
+```json
+{
+  "zeitstruktur": [
+    { "id": "https://w3id.org/kim/ekw/zeit/doppelstunde", "type": "Concept", "prefLabel": { "de": "Doppelstunde" } },
+    "2 x 90 Min."
+  ]
+}
+```
+
+Consumers MUST accumulate the two kinds independently. A consumer MUST NOT let the first tag it sees for a pair fix the kind of the whole facet: that discards every tag of the other kind, and since producers emit concept tags before scalars, the half discarded is the author's own text — invisibly, because the vocabulary half still renders.
+
+Ordering is normative, so that the reconstructed value re-serializes to the same tag set: **concepts first in tag order, then scalars in tag order**, irrespective of how the tags are interleaved in the event. `<sub>` tags continue to attach to the concept opened by the preceding `id`; a scalar tag sitting between them MUST NOT act as that boundary.
 
 ##### Parsing rule (normative)
 
@@ -324,7 +348,7 @@ To convert a Nostr event back to AMB metadata:
    }
    ```
    The `id` uses the NIP-19 `naddr` encoding (which includes kind, pubkey, d-tag, and relay hint(s)) prefixed with `nostr:` per NIP-21.
-10. **Extension tags (`ext:` prefix)**: Parse each key whose first segment is `ext` using the normative left-anchored rule in *Extension Properties*, ignoring any key that does not match. Group the surviving tags by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`); keys with no `<sub>` yield an array of strings instead. Place the result under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
+10. **Extension tags (`ext:` prefix)**: Parse each key whose first segment is `ext` using the normative left-anchored rule in *Extension Properties*, ignoring any key that does not match. Group the surviving tags by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`); keys with no `<sub>` yield strings instead. Concepts and scalars under one pair accumulate independently and concatenate as concepts-then-scalars — see *Mixed facets*. Place the result under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
 
 
 ## How to query for AMB nostr-events in supporting relays
