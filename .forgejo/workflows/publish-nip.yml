@@ -23,22 +23,39 @@ jobs:
         run: apt-get update && apt-get install -y pandoc
 
       - name: Publish all NIPs
+        # Pinned to bash: publish() builds the -t k= flags in an array, and the
+        # runner falls back to sh when bash is absent, where arrays are a syntax
+        # error rather than a silent difference.
+        shell: bash
         env:
           NOSTR_SECRET_KEY: ${{ secrets.NOSTR_NSEC }}
         run: |
           RELAYS="wss://relay.damus.io wss://nos.lol wss://relay.nostr.band wss://nip85.brainstorm.world wss://relay.edufeed.org"
 
           publish() {
-            local file=$1 kind=$2
+            local file=$1; shift
             local slug=$(echo "$file" | tr '[:upper:]' '[:lower:]')
             local dtag="edufeed-${slug}"
             local title="NIP-${file}"
 
+            # One -t k= per kind the NIP defines. nostrhub/README.md documents k as
+            # plural ("kinds this NIP defines or relates to") and
+            # nostrhub/src/hooks/useNipsByKind.ts queries kind 30817 by #k, so a
+            # kind omitted here is a kind the NIP cannot be discovered by. Each
+            # argument is "<kind>;<label>"; nak emits ["k","<kind>","<label>"].
+            local ktags=()
+            for spec in "$@"; do ktags+=(-t "k=${spec}"); done
+
             echo "Publishing ${title}..."
-            nak event -k 30817 -c "@${file}.md" -t "d=${dtag}" -t "title=${title}" -t "k=${kind}" $RELAYS
+            nak event -k 30817 -c "@${file}.md" -t "d=${dtag}" -t "title=${title}" "${ktags[@]}" $RELAYS
             pandoc -f markdown -t asciidoc "${file}.md" -o "${file}.adoc"
             nak event -k 30818 -c "@${file}.adoc" -t "d=${dtag}-nip" -t "title=${title}" $RELAYS
           }
 
-          publish AMB 30142
-          publish VOCAB 39737
+          publish AMB "30142;AMB Metadata Event"
+
+          # NIP-VOCAB defines six kinds (VOCAB.md) - three published, three draft.
+          # All six are advertised: k means "defines or relates to", and a client
+          # asking what defines 39738 should find this NIP.
+          publish VOCAB "39737;ConceptScheme" "39738;Concept" "39739;Collection" \
+                        "39736;ConceptScheme draft" "39735;Concept draft" "39734;Collection draft"
