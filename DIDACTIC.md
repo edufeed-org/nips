@@ -314,8 +314,12 @@ Each follows the flat-concept-triple grammar (`ext:tk:<facet>:id`,
 ## Publikationen (NKBIP-01 kind 30040)
 
 Publications are **not** a NIP-DIDACTIC kind. A Publikation is published as
-a standard [NKBIP-01] *Curated Publications* index (kind `30040`,
-`naddr…tn64lg`, d-tag `nkbip-01`): `d` (lowercase letters/digits/hyphens,
+a standard [NKBIP-01] *Curated Publications* index event of kind `30040`.
+(The [NKBIP-01] spec document is itself a kind-`30817` record — `naddr…tn64lg`,
+whose own `d`-tag is `nkbip-01`. That is the spec's address, not a tag on any
+publication event; the publication's own `d`-tag is the next item below.)
+
+A Publikation carries `d` (lowercase letters/digits/hyphens,
 deterministic `tk-p{projekt}-pub{id}` for Transferkiosk imports), `title`,
 `type` (`academic`, or `book` for monographs), `summary` (abstract; the
 event content MUST be empty), plain `author` tags, `i` external identifier

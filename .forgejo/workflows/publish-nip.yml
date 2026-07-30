@@ -59,3 +59,15 @@ jobs:
           # asking what defines 39738 should find this NIP.
           publish VOCAB "39737;ConceptScheme" "39738;Concept" "39739;Collection" \
                         "39736;ConceptScheme draft" "39735;Concept draft" "39734;Collection draft"
+
+          # NIP-DIDACTIC defines two native kinds. Project publications are
+          # delegated to NKBIP-01 kind 30040, which is NKBIP-01's to define, so
+          # 30040 is deliberately not advertised here. Kind 30145 held the
+          # publication role until 2026-07 and was retired (see the history note
+          # in DIDACTIC.md); it must not be advertised either.
+          #
+          # Publishing DIDACTIC was authorized by laoc on 2026-07-30 in #NIPs,
+          # after an explicit ask: the 30143/30144 events are already public on
+          # amb-relay, so the spec is what makes published data interpretable,
+          # and the 30817 record is how the kind claim becomes discoverable.
+          publish DIDACTIC "30143;Projekt" "30144;Maßnahme"
