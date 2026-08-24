@@ -3,6 +3,11 @@
 This is a history of NIP changes that potentially break pre-existing implementations, in
 reverse chronological order.
 
+Upstream (nostr-protocol/nips) removed this file in [4b19bf2](https://github.com/nostr-protocol/nips/commit/4b19bf2).
+It is kept in this fork to track breaking changes to the edufeed NIPs
+([AMB](AMB.md), [VOCAB](VOCAB.md), [DIDACTIC](DIDACTIC.md)); the upstream rows below are
+retained for historical reference only and are no longer updated.
+
 | Date        | Commit    | NIP      | Change |
 | ----------- | --------- | -------- | ------ |
 | 2026-07-16  | [37fe6a4](https://git.edufeed.org/edufeed/nips/commit/37fe6a4) | [AMB](AMB.md) | creator/contributor objects with a `nostr:` URI `id` (npub/nprofile) must now be converted to `p` tags instead of flattened `creator:*`/`contributor:*` tags; reverse conversion must add `@context`, `type`, and an npub `name` fallback, and derives `nostr:<naddr>` ids for non-URI `d` tags |
