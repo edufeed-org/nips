@@ -367,21 +367,21 @@ Rules:
 
 `d` is the [TS4NFDI Mapping Sameness Identifier](https://ts4nfdi.github.io/mapping-sameness-identifier/), affirmative form:
 
-1. subjects = [`from`], objects = `to` values, each NFC-normalised;
+1. subjects = [`from`], objects = `to` values, each NFC-normalised; duplicate values MUST be removed before sorting (subjects and objects are sets);
 2. sort subjects and objects by Unicode code point, join each with `|`;
 3. predicate = the full SKOS IRI, `http://www.w3.org/2004/02/skos/core#<relation>`;
 4. string = `<subjects> <predicate> <objects>` (single spaces), UTF-8;
 5. SHA-256, lowercase hex; `d` = `mapping:<hex>`.
 
-Implementations MUST reproduce the two published TS4NFDI test vectors (the negative one by implementing the `~` suffix internally, even though negative mappings are not published in this revision), plus the following test vectors using `nostr:` identifiers:
+The following are test vectors using `nostr:` identifiers:
 
 | from | relation | to | `d` |
 |---|---|---|---|
 | `nostr:39738:d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612:5-6` | `exactMatch` | `https://w3id.org/kim/educationalLevel/level_2` | `mapping:79bbfff8bd56bf8d827a8687a91e6abe94bf496305e4258071bb73347ad99431` |
 | `https://edufeed.org/ns/ekw#lrt/arbeitsblatt` | `exactMatch` | `https://w3id.org/kim/hcrt/worksheet` | `mapping:3ee871bd4f4a105564793c8ff1476f8e72685eb5d8c6b6e3188e3ec95752c75c` |
-| `nostr:39738:d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612:ubung-lernkontrolle` | `narrowMatch` | `https://w3id.org/kim/hcrt/assessment`, `https://w3id.org/kim/hcrt/drill_and_practice` (any order) | `mapping:eac6f2b08c2a3fa266f7e3a750abdd1643b7e4e4460b133d0e053f2a775443f7` |
+| `nostr:39738:d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612:ubung-lernkontrolle` | `narrowMatch` | `https://w3id.org/kim/hcrt/assessment`, `https://w3id.org/kim/hcrt/drill_and_practice` (any order; duplicates don't matter) | `mapping:eac6f2b08c2a3fa266f7e3a750abdd1643b7e4e4460b133d0e053f2a775443f7` |
 
-Implementations MUST also reproduce the two TS4NFDI reference vectors.
+Implementations MUST reproduce the two published [TS4NFDI](https://ts4nfdi.github.io/mapping-sameness-identifier/) test vectors (the negative one by implementing the `~` suffix internally, even though negative mappings are not published in this revision), plus the test vectors above.
 
 Consequences:
 
