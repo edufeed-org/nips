@@ -22,6 +22,14 @@ This NIP uses six addressable event kinds — one per entity type, with a parall
 | Concept        | `39738`   | `39735` |
 | Collection     | `39739`   | `39734` |
 
+Standalone mappings between concepts (see [Standalone Mappings](#standalone-mappings)) use three further addressable kinds, without draft counterparts:
+
+| Entity          | Kind    |
+|-----------------|---------|
+| Mapping         | `39740` |
+| Concordance     | `39741` |
+| Mapping review  | `39742` |
+
 *Published kinds increment (39737 → 39738 → 39739); draft kinds decrement (39736 → 39735 → 39734) so the `39737` / `39736` pair from an earlier revision of this NIP is preserved.*
 
 Distinct kinds let relays (which only index single-letter tags per NIP-01) return just the entity type a client asked for. The `["type", ...]` tag is retained for human readability and secondary validation but carries no query semantics.
@@ -219,7 +227,9 @@ For linking concepts **across different concept schemes** published on Nostr:
 
 `exactMatch` is transitive: if concept A is an exact match of B, and B is an exact match of C, then A is also an exact match of C. Clients resolving mappings SHOULD account for transitive chains.
 
-For symmetric mapping relations (`exactMatch`, `closeMatch`, `relatedMatch`), publishers SHOULD assert both directions. `narrowMatch` is the inverse of `broadMatch` — publishers SHOULD assert both directions: when a concept has a `broadMatch` tag, the target concept SHOULD include a corresponding `narrowMatch` tag pointing back, and vice versa.
+For symmetric mapping relations (`exactMatch`, `closeMatch`, `relatedMatch`) embedded in Concept events, publishers SHOULD assert both directions. `narrowMatch` is the inverse of `broadMatch` — publishers SHOULD assert both directions: when a concept has a `broadMatch` tag, the target concept SHOULD include a corresponding `narrowMatch` tag pointing back, and vice versa. This rule applies to embedded tags only; [standalone mappings](#standalone-mappings) are stored in one direction and clients infer the inverse.
+
+Embedded mapping tags can only be added by the concept's author. To link concepts of different publishers, or to publish a crosswalk as a third party, use [standalone mappings](#standalone-mappings).
 
 `broadMatch`, `narrowMatch`, and `relatedMatch` are cross-scheme counterparts of `broader`, `narrower`, and `related` respectively. Clients aggregating semantic relations SHOULD include mapping relations in their results.
 
@@ -277,6 +287,195 @@ Other Nostr events can reference concepts defined by this NIP using standard `a`
 ```
 
 This makes the concept queryable: a relay filter `{"#a": ["39738:<pubkey>:s1017"]}` returns all events that reference that concept, across all event kinds.
+
+## Standalone Mappings
+
+Mapping relations embedded in Concept events (see [Mapping Relations (Nostr-to-Nostr)](#mapping-relations-nostr-to-nostr)) can only be asserted by the concept's own author, and every added mapping rewrites the concept event. This section defines three further addressable kinds — Mapping, Concordance, and Mapping review — for mappings that link concepts across publishers or that a third party (a curator or institution) publishes as a crosswalk, without touching the concept events themselves. The model follows [JSKOS](https://gbv.github.io/jskos/), the data format used by Cocoda / coli-conc, and the [TS4NFDI Mapping Sameness Identifier](https://ts4nfdi.github.io/mapping-sameness-identifier/) for content-addressing mappings.
+
+### Concept Identifiers
+
+Every mapping refers to concepts and schemes by a **concept identifier** string:
+
+- the concept's external URI (the value of its `i` tag), if it has one;
+- otherwise `nostr:<kind>:<pubkey-hex>:<d>` (e.g. `nostr:39738:<pubkey>:ethik`, `nostr:39737:<pubkey>:klassenstufen`).
+
+The same rule applies to schemes (the scheme's `i` tag, else `nostr:39737:<pubkey>:<d>`). Identifiers MUST be compared as exact strings after NFC normalisation.
+
+Identifiers MUST NOT contain relay hints, event ids, labels, or timestamps; the `nostr:` form is the raw address, not a bech32 `naddr` (whose encoding varies with relay hints). Label, definition, notation, and hierarchy edits therefore never change an identifier.
+
+**Identifiers are immutable.** Once a concept or scheme is published:
+
+- its `i` tag MUST NOT be added, changed, or removed — a concept published without `i` keeps its `nostr:` identifier forever;
+- its `d` tag and author are fixed by addressability.
+
+A concept that needs a different identifier MUST be published as a new concept; the old concept MAY be linked to it with `exactMatch`. Publishing tools MUST refuse edits that would add, change, or remove the `i` tag of a published concept, and SHOULD warn when a scheme is published without URIs if it is expected to be referenced from other events.
+
+> Known deviation: `nostr:<kind>:<pubkey>:<d>` is not a NIP-21 bech32 URI. It is kept for compatibility with existing data that uses this form.
+
+### Mapping — `kind:39740` (addressable)
+
+```jsonc
+{
+  "kind": 39740,
+  "content": "optional free-text note",
+  "tags": [
+    ["d", "mapping:<sha256 hex>"],
+    ["relation", "exactMatch"],
+    ["from", "nostr:39738:<pubkey>:5-6"],   // klassenstufen concepts have no i-tag URI
+    ["to", "https://w3id.org/kim/educationalLevel/level_2"],
+    ["fromScheme", "nostr:39737:<pubkey>:klassenstufen"],
+    ["toScheme", "https://w3id.org/kim/educationalLevel/"],
+
+    // index tags (for relay filtering only; carry no semantics)
+    ["a", "39738:<pubkey>:5-6", "wss://relay.edufeed.org"],
+    ["a", "39738:<pubkey>:level_2", "wss://relay.edufeed.org"],
+    ["a", "39737:<pubkey>:klassenstufen"],
+    ["a", "39737:<pubkey>:educational-level"],
+    ["i", "https://w3id.org/kim/educationalLevel/level_2"],
+
+    // optional
+    ["a", "39741:<author>:klassenstufen--educational-level", "", "partOf"],
+    ["relevance", "0.8"]
+  ]
+}
+```
+
+#### Mapping Tags
+
+| Tag | Card. | Meaning |
+|---|---|---|
+| `d` | 1 | Sameness identifier (see [Sameness Identifier](#sameness-identifier)) |
+| `relation` | 1 | One of `exactMatch`, `closeMatch`, `broadMatch`, `narrowMatch`, `relatedMatch` |
+| `from` | exactly 1 | Source concept identifier |
+| `to` | 1..n | Target concept identifiers; several = AND combination (JSKOS `memberSet`) |
+| `fromScheme`, `toScheme` | 1 each | Scheme identifiers |
+| `a` (no marker) | 0..n | Index: address of every referenced concept/scheme that exists as a Nostr event. SHOULD be present for each such concept/scheme |
+| `i` | 0..n | Index: every referenced concept identifier that is a URI (not `nostr:`). SHOULD be present |
+| `a` … `partOf` | 0..1 | Concordance membership (see [Concordance](#concordance)) |
+| `relevance` | 0..1 | Decimal 0..1, JSKOS `mappingRelevance` |
+| content | — | Free-text note (JSKOS `note`) |
+
+Rules:
+
+- `to` MUST be non-empty. Null mappings ("no equivalent in toScheme") are reserved for a future revision.
+- OR alternatives are expressed as separate mappings (JSKOS `memberChoice` is not supported).
+- `from` and `to` concepts SHOULD be in different schemes.
+- Relays can find all mappings touching a concept with `{"kinds":[39740],"#a":["39738:<pubkey>:<d>"]}` or `{"kinds":[39740],"#i":["<uri>"]}`.
+- Clients MUST ignore mapping events whose `d` does not equal the sameness identifier computed from their `from`, `relation` and `to` tags.
+
+#### Sameness Identifier
+
+`d` is the [TS4NFDI Mapping Sameness Identifier](https://ts4nfdi.github.io/mapping-sameness-identifier/), affirmative form:
+
+1. subjects = [`from`], objects = `to` values, each NFC-normalised;
+2. sort subjects and objects by Unicode code point, join each with `|`;
+3. predicate = the full SKOS IRI, `http://www.w3.org/2004/02/skos/core#<relation>`;
+4. string = `<subjects> <predicate> <objects>` (single spaces), UTF-8;
+5. SHA-256, lowercase hex; `d` = `mapping:<hex>`.
+
+Implementations MUST reproduce the two published TS4NFDI test vectors (the negative one by implementing the `~` suffix internally, even though negative mappings are not published in this revision), plus the following test vectors using `nostr:` identifiers:
+
+| from | relation | to | `d` |
+|---|---|---|---|
+| `nostr:39738:d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612:5-6` | `exactMatch` | `https://w3id.org/kim/educationalLevel/level_2` | `mapping:79bbfff8bd56bf8d827a8687a91e6abe94bf496305e4258071bb73347ad99431` |
+| `https://edufeed.org/ns/ekw#lrt/arbeitsblatt` | `exactMatch` | `https://w3id.org/kim/hcrt/worksheet` | `mapping:3ee871bd4f4a105564793c8ff1476f8e72685eb5d8c6b6e3188e3ec95752c75c` |
+| `nostr:39738:d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612:ubung-lernkontrolle` | `narrowMatch` | `https://w3id.org/kim/hcrt/assessment`, `https://w3id.org/kim/hcrt/drill_and_practice` (any order) | `mapping:eac6f2b08c2a3fa266f7e3a750abdd1643b7e4e4460b133d0e053f2a775443f7` |
+
+Implementations MUST also reproduce the two TS4NFDI reference vectors.
+
+Consequences:
+
+- The same assertion by different authors produces the same `d`, so agreement and reviews aggregate across authors.
+- An author republishing the same content (unchanged `from`/`relation`/`to`) replaces their previous event, e.g. to edit the note, `relevance`, or `partOf`.
+- Changing the relation or the members changes `d`, producing a new event; the author SHOULD delete the old one via NIP-09.
+
+#### Direction
+
+Only one direction is stored. Clients resolving mappings MUST infer the inverse: `exactMatch`↔`exactMatch`, `closeMatch`↔`closeMatch`, `relatedMatch`↔`relatedMatch`, `broadMatch`↔`narrowMatch`. Inverses are only inferable for 1:1 mappings; a 1:n mapping is only readable in its stored direction.
+
+The rule "publishers SHOULD assert both directions" (see [Mapping Relations (Nostr-to-Nostr)](#mapping-relations-nostr-to-nostr)) applies to **embedded** mapping tags only; for standalone mappings, publishers SHOULD NOT publish the inverse as a separate event.
+
+### Concordance — `kind:39741` (addressable)
+
+```jsonc
+{
+  "kind": 39741,
+  "content": "Crosswalk der EKW-Klassenstufen auf KIM-Bildungsstufen.",
+  "tags": [
+    ["d", "klassenstufen--educational-level"],
+    ["title", "Klassenstufen ↔ Bildungsstufe", "de"],
+    ["fromScheme", "nostr:39737:<pubkey>:klassenstufen"],
+    ["toScheme", "https://w3id.org/kim/educationalLevel/"],
+    ["a", "39737:<pubkey>:klassenstufen"],
+    ["a", "39737:<pubkey>:educational-level"],
+    ["p", "<pubkey>", "", "maintainer"],
+    ["license", "CC0-1.0"]
+  ]
+}
+```
+
+#### Concordance Tags
+
+| Tag | Card. | Meaning |
+|---|---|---|
+| `d` | 1 | Author-chosen slug |
+| `title` | 1..n | Title, BCP47 language as 3rd element, at most one per language |
+| `fromScheme`, `toScheme` | 1 each | Scheme identifiers |
+| `a` (no marker) | 0..2 | Index: scheme addresses, where schemes exist on Nostr |
+| `p` … `maintainer` | 0..n | Additional pubkeys allowed to add members |
+| `license` | 0..1 | SPDX identifier |
+| content | — | Description |
+
+Rules:
+
+- A concordance does not list its mappings. Its members are mappings with a `partOf` tag pointing at it **whose author is the concordance author or a listed maintainer**. `partOf` from anyone else MUST be ignored. Clients fetch members with `{"kinds":[39740],"#a":["39741:<owner>:<d>"],"authors":["<owner>", "<maintainer>", …]}`.
+- A member's `fromScheme`/`toScheme` MUST equal the concordance's; clients MUST ignore non-matching members.
+- To remove a member, the maintainer MUST delete the mapping (NIP-09) or republish it without `partOf`.
+- A mapping without `partOf` is a valid personal assertion; it MAY appear when browsing a concept but MUST NOT appear in trust-restricted consumers.
+- Concordances are the unit of trust for consumers (see [Resolving Mappings](#resolving-mappings)).
+
+### Mapping Review — `kind:39742` (addressable)
+
+```jsonc
+{
+  "kind": 39742,
+  "content": "Klasse 5-6 umfasst in manchen Ländern noch die Primarstufe.",
+  "tags": [
+    ["d", "mapping:<sha256 hex>"],
+    ["vote", "-1"],
+    ["mismatch", "https://uri.gbv.de/terminology/mismatch/inexact"],
+    ["a", "39740:<mapping-author>:mapping:<sha256 hex>"],
+    ["a", "39741:<owner>:klassenstufen--educational-level"]
+  ]
+}
+```
+
+#### Mapping Review Tags
+
+| Tag | Card. | Meaning |
+|---|---|---|
+| `d` | 1 | Sameness identifier of the reviewed mapping content |
+| `vote` | 1 | `+1` or `-1` |
+| `mismatch` | 0..n | Only with `-1`: reason URI from `https://uri.gbv.de/terminology/mismatch/` |
+| `a` | 0..n | Optional context: the specific mapping event seen, the concordance |
+| content | — | Optional comment |
+
+Rules:
+
+- There MUST be at most one current vote per reviewer per mapping content; a reviewer republishing a review for the same `d` replaces their previous vote.
+- All reviews of a mapping content can be fetched with `{"kinds":[39742],"#d":["mapping:<hex>"]}`.
+- There is no separate "confirmed" event. A mapping is **confirmed within a concordance** when the concordance owner or a maintainer has published a mapping with the same `d` and `partOf` pointing at that concordance. Adopting someone else's mapping means republishing the same content under one's own key.
+- Web-of-trust weighting and aggregating votes into `relevance` are out of scope for this revision; clients SHOULD show the raw vote sum and who voted.
+
+### Resolving Mappings
+
+Client resolution SHOULD proceed as follows:
+
+1. **Normalise** both sources into one model `{id, from, to[], relation, fromScheme, toScheme, author, partOf?, origin}`: embedded `a` tags with mapping markers and embedded `r` tags with mapping markers on Concept events (author = concept author, `origin: "embedded"`), and standalone `kind:39740` events (`origin: "standalone"`). Converting an embedded `a`-tag target into a concept identifier (see [Concept Identifiers](#concept-identifiers)) needs the target concept event, for its `i` tag; clients SHOULD fall back to the `nostr:` form when the target is not available. Embedded mappings' `id` SHOULD be computed with the same sameness algorithm as standalone mappings; entries with an equal `id` SHOULD be merged into one mapping with multiple sources.
+2. **Inverses** SHOULD be computed per [Direction](#direction), so a lookup from either side finds a mapping.
+3. The **trust set** is a parameter of resolution: `{concordances: ParsedConcordance[], authors?: pubkey[], includeEmbedded: boolean}`, or `'all'`. Clients SHOULD pass parsed concordance objects (carrying author, maintainers, and schemes), not just concordance addresses, since membership requires them. Editors SHOULD pass "everything" and group results by source; search consumers SHOULD pass their configured concordances.
+4. **Transitivity**: clients SHOULD chain only `exactMatch`, only within the trust set, at most 3 hops. `closeMatch`, `broadMatch`, `narrowMatch`, and `relatedMatch` MUST NOT be chained in this revision.
+5. **Conflicts**: an `exactMatch` together with a `broadMatch`, `narrowMatch`, or `relatedMatch` for the same concept pair — including pairs where the `exactMatch` is reached only transitively — SHOULD be reported as a conflict. A conflicting target inside the trust set MUST get no `exactMatch` result, direct or transitive, and exact chains MUST NOT be expanded through it.
 
 ## Authority Model
 
@@ -478,3 +677,5 @@ During a transition window, clients MAY dual-read both the legacy and the new ki
 - [NIP-73](73.md) — External Content IDs (`i` tag)
 - [NIP-54](54.md) — Wiki (web-of-trust authority model precedent)
 - [NIP-AMB](AMB.md) — AMB metadata events (precedent for `a` tag markers)
+- [JSKOS data format](https://gbv.github.io/jskos/) — mapping and concordance model
+- [TS4NFDI Mapping Sameness Identifier](https://ts4nfdi.github.io/mapping-sameness-identifier/)
