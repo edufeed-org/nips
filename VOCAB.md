@@ -223,7 +223,7 @@ For linking concepts **across different concept schemes** published on Nostr:
 | `narrowMatch` | no | This concept is broader than the target (cross-scheme) |
 | `relatedMatch` | yes | Non-hierarchical association across schemes |
 
-`exactMatch` MUST NOT be combined with `broadMatch` or `relatedMatch` for the same concept pair. `exactMatch` implies `closeMatch` — every exact match is inherently a close match. Clients querying for close matches SHOULD also include exact matches in their results.
+`exactMatch` MUST NOT be combined with `broadMatch`, `narrowMatch`, or `relatedMatch` for the same concept pair. `exactMatch` implies `closeMatch` — every exact match is inherently a close match. Clients querying for close matches SHOULD also include exact matches in their results.
 
 `exactMatch` is transitive: if concept A is an exact match of B, and B is an exact match of C, then A is also an exact match of C. Clients resolving mappings SHOULD account for transitive chains.
 
@@ -300,6 +300,8 @@ Every mapping refers to concepts and schemes by a **concept identifier** string:
 - otherwise `nostr:<kind>:<pubkey-hex>:<d>` (e.g. `nostr:39738:<pubkey>:ethik`, `nostr:39737:<pubkey>:klassenstufen`).
 
 The same rule applies to schemes (the scheme's `i` tag, else `nostr:39737:<pubkey>:<d>`). Identifiers MUST be compared as exact strings after NFC normalisation.
+
+In the `nostr:<kind>:<pubkey-hex>:<d>` form, `<kind>` is always the **published** kind (39738 Concept, 39737 ConceptScheme), even when the event being identified is itself a draft, and even when an `a` tag being converted to this form points at a draft-kind address (e.g. `39735:<pubkey>:<d>` resolves to `nostr:39738:<pubkey>:<d>`). If an event carries several `i` tags, the identifier is the value of the **first** one (matching the reference library, whose `vocabIdentifier` uses the first `i` tag it finds).
 
 Identifiers MUST NOT contain relay hints, event ids, labels, or timestamps; the `nostr:` form is the raw address, not a bech32 `naddr` (whose encoding varies with relay hints). Label, definition, notation, and hierarchy edits therefore never change an identifier.
 
