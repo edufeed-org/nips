@@ -325,7 +325,7 @@ No type `1` (relay) entries are included, and the bech32 string is lowercase. Id
 
 NIP-19 does not mandate TLV order, so a `nostr:naddr…` string received from elsewhere may differ from the canonical string while naming the same event. Consumers MUST NOT compare Nostr URIs as received strings: they MUST decode them and compare the triple (published kind, pubkey, exact `d`), ignoring relay entries — or re-encode both sides canonically first. The canonical string matters in exactly one place: the [sameness identifier](#sameness-identifier) hashes identifier strings, so producers MUST write canonical Nostr URIs into mapping events. External-URI identifiers MUST be compared as exact strings after NFC normalisation.
 
-Publishers SHOULD choose NFC-normalised `d` values when creating concepts and schemes. Implementations MUST use a bech32 codec without the 90-character BIP-173 limit (NIP-19 allows up to 5000 characters).
+Publishers SHOULD choose NFC-normalised `d` values when creating concepts and schemes, and MUST keep them at most 255 bytes of UTF-8: a NIP-19 TLV length is a single byte, so a longer `d` has no naddr and therefore no canonical Nostr URI (consumers encountering such an event MUST NOT throw; they SHOULD treat the raw address as unresolvable). Implementations MUST use a bech32 codec without the 90-character BIP-173 limit (NIP-19 allows up to 5000 characters).
 
 **Identifiers are immutable.** Once a concept or scheme is published:
 
