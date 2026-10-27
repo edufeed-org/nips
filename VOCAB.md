@@ -116,13 +116,17 @@ A concept represents a single term, category, or idea within a vocabulary.
 | `a` | coordinates, relay, `narrower` | yes* | Required if the concept has children. The child MUST have a corresponding `broader` tag |
 | `a` | coordinates, relay, marker | no | Other relations: `related`, mapping markers (see [Relations](#relations)) |
 | `r` | external URI, marker | no | Mappings to external vocabularies (see [External Mappings](#external-mappings)) |
-| `i` | external URI | no | Bridge to an external URI identifier for this concept |
+| `i` | external URI | no | Bridge to an external URI identifier for this concept (see [The `i` tag](#the-i-tag)) |
 | `definition` | text, language | no | Formal definition. Third element is a BCP47 language tag. The `content` field serves as the primary definition; `definition` tags provide additional translations |
 | `scopeNote` | text, language | no | Intended usage scope. Third element is a BCP47 language tag |
 | `example` | text, language | no | Usage example. Third element is a BCP47 language tag |
 | `note` | text, language | no | Generic documentation note. Third element is a BCP47 language tag |
 
 A concept MAY belong to multiple concept schemes by including multiple `inScheme` tags.
+
+### The `i` tag
+
+The `i` tag of a scheme or concept states the entity's **own** external identifier (e.g. `http://w3id.org/kim/schulfaecher/s1017`): the Nostr event is a republication of that concept, and the URI is its identifier everywhere else in this NIP. This is an identity statement about the event itself, not a reference to external content as in [NIP-73](73.md); the value is a plain URI (not a NIP-73 typed id such as `isbn:…`), and no `k` tag accompanies it. The single-letter tag is used deliberately so relays index it and `{"#i": ["<uri>"]}` finds the concept.
 
 The `content` field SHOULD contain the concept's definition or scope note.
 
@@ -324,6 +328,8 @@ The canonical Nostr URI of a vocabulary event is `nostr:<naddr>`, where `<naddr>
 No type `1` (relay) entries are included, and the bech32 string is lowercase. Identifiers therefore never carry relay hints, event ids, labels, or timestamps, and label, definition, notation, and hierarchy edits never change an identifier. Relay hints belong in the companion `a` tags of a reference, not in the identifier.
 
 NIP-19 does not mandate TLV order, so a `nostr:naddr…` string received from elsewhere may differ from the canonical string while naming the same event. Consumers MUST NOT compare Nostr URIs as received strings: they MUST decode them and compare the triple (published kind, pubkey, exact `d`), ignoring relay entries — or re-encode both sides canonically first. The canonical string matters in exactly one place: the [sameness identifier](#sameness-identifier) hashes identifier strings, so producers MUST write canonical Nostr URIs into mapping events. External-URI identifiers MUST be compared as exact strings after NFC normalisation.
+
+**Why a bech32 URI inside an event.** [NIP-19](19.md) describes bech32 entities as display and sharing formats rather than core-protocol values, and protocol-level references in this NIP accordingly stay in hex: every reference to a vocabulary event that a relay has to index is an `a` tag with a `<kind>:<pubkey>:<d>` coordinate (and the relay hint). The canonical Nostr URI is an *application-level identifier value*: AMB requires concept ids to be URIs, [NIP-21](21.md) defines the only `nostr:` URI form, and [NIP-27](27.md) already establishes `nostr:` URIs inside events (in `content`). It therefore appears only where a URI is required — in `<facet>:id` tags of [NIP-AMB](AMB.md)/[NIP-DIDACTIC](DIDACTIC.md) events, in mapping `from`/`to`/`fromScheme`/`toScheme` tags, and in AMB JSON — always next to the companion `a` tag that carries the protocol-level reference.
 
 Publishers SHOULD choose NFC-normalised `d` values when creating concepts and schemes, and MUST keep them at most 255 bytes of UTF-8: a NIP-19 TLV length is a single byte, so a longer `d` has no naddr and therefore no canonical Nostr URI (consumers encountering such an event MUST NOT throw; they SHOULD treat the raw address as unresolvable). Implementations MUST use a bech32 codec without the 90-character BIP-173 limit (NIP-19 allows up to 5000 characters).
 
