@@ -104,9 +104,10 @@ When a facet carries several concepts, the three tags repeat per concept. The
 boundary (see *Arrays* above); consumers group each `:prefLabel`/`:type` with
 the most recent `:id`.
 
-The `<concept URI>` is **always** an external (resolvable or stable) URI —
-never a Nostr coordinate. If the vocabulary is also published on Nostr per
-NIP-VOCAB, an additional companion `a` tag SHOULD be emitted so vocab-aware
+The `<concept URI>` is the concept's identifier per [NIP-VOCAB][vocab]: its
+external (resolvable or stable) URI when it has one, otherwise its canonical
+Nostr URI `nostr:naddr1…` — never a raw Nostr coordinate. If the vocabulary
+is published on Nostr, a companion `a` tag SHOULD be emitted so vocab-aware
 clients can fetch the underlying `kind:39738` event for label translation,
 narrower/broader concepts, etc.:
 

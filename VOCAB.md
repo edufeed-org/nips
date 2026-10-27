@@ -279,12 +279,24 @@ This declares: "this Nostr concept is a re-publication of the concept at that ex
 
 ## Referencing Vocabulary Concepts from Other Events
 
-Other Nostr events can reference concepts defined by this NIP using standard `a` tags:
+Other Nostr events reference a concept by its [concept identifier](#concept-identifiers) and, when the concept is published on Nostr, SHOULD add a companion `a` tag carrying the address and a relay hint:
 
 ```jsonc
-// In a kind:30142 AMB event, a kind:1 note, or any other event:
+// In a kind:30142 AMB event (NIP-AMB), a NIP-DIDACTIC record, or any other event
+// that carries flattened concept facets:
+["about:id", "http://w3id.org/kim/schulfaecher/s1017"],   // concept with an i tag: its external URI
+["about:prefLabel:de", "Mathematik"],
+["a", "39738:<pubkey>:s1017", "<relay>", "about"],
+
+["teaches:id", "nostr:naddr1…"],                           // concept without i tag: canonical Nostr URI
+["teaches:prefLabel:de", "Wendepunkte in Jesus-Geschichten wahrnehmen"],
+["a", "39738:<pubkey>:wendepunkte-wahrnehmen", "<relay>", "teaches"],
+
+// In a kind:1 note or any event without flattened facets:
 ["a", "39738:<pubkey>:s1017", "<relay>"]
 ```
+
+The fourth element of the companion `a` tag is the flattened tag prefix the concept appears under (`about`, `teaches`, `ext:<ns>:<facet>`, …) — the same convention [NIP-AMB](AMB.md) uses for `isPartOf`/`hasPart` and [NIP-DIDACTIC](DIDACTIC.md) uses for its facets. Events without flattened facets omit it. The identifier is authoritative; the `a` tag is an index and a relay hint, and for a `nostr:naddr…` identifier it is fully derivable from the identifier. Consumers without a vocab-aware index can ignore the `a` tag.
 
 This makes the concept queryable: a relay filter `{"#a": ["39738:<pubkey>:s1017"]}` returns all events that reference that concept, across all event kinds.
 
@@ -294,16 +306,26 @@ Mapping relations embedded in Concept events (see [Mapping Relations (Nostr-to-N
 
 ### Concept Identifiers
 
-Every mapping refers to concepts and schemes by a **concept identifier** string:
+Every mapping refers to concepts and schemes by a **concept identifier** string, which is always a URI:
 
 - the concept's external URI (the value of its `i` tag), if it has one;
-- otherwise `nostr:<kind>:<pubkey-hex>:<d>` (e.g. `nostr:39738:<pubkey>:ethik`, `nostr:39737:<pubkey>:klassenstufen`).
+- otherwise the concept's **canonical Nostr URI** — `nostr:` followed by the [NIP-19](19.md) `naddr` encoding of its address, per [NIP-21](21.md), e.g. `nostr:naddr1qqpn2tfkqgsdy6y79aqa40a6j576yej449xw92jwq2wrs0hfy8r2fh404wv6vysrqsqqpxe6vja26r` (see [Canonical Nostr URI](#canonical-nostr-uri)).
 
-The same rule applies to schemes (the scheme's `i` tag, else `nostr:39737:<pubkey>:<d>`). Identifiers MUST be compared as exact strings after NFC normalisation.
+The same rule applies to schemes (the scheme's `i` tag, else its canonical Nostr URI). If an event carries several `i` tags, the identifier is the value of the **first** one (matching the reference library, whose `vocabIdentifier` uses the first `i` tag it finds). The same identifiers are used wherever another event refers to a concept, e.g. in the flattened `<facet>:id` tags of [NIP-AMB](AMB.md) and [NIP-DIDACTIC](DIDACTIC.md) events (see [Referencing Vocabulary Concepts from Other Events](#referencing-vocabulary-concepts-from-other-events)).
 
-In the `nostr:<kind>:<pubkey-hex>:<d>` form, `<kind>` is always the **published** kind (39738 Concept, 39737 ConceptScheme), even when the event being identified is itself a draft, and even when an `a` tag being converted to this form points at a draft-kind address (e.g. `39735:<pubkey>:<d>` resolves to `nostr:39738:<pubkey>:<d>`). If an event carries several `i` tags, the identifier is the value of the **first** one (matching the reference library, whose `vocabIdentifier` uses the first `i` tag it finds).
+#### Canonical Nostr URI
 
-Identifiers MUST NOT contain relay hints, event ids, labels, or timestamps; the `nostr:` form is the raw address, not a bech32 `naddr` (whose encoding varies with relay hints). Label, definition, notation, and hierarchy edits therefore never change an identifier.
+The canonical Nostr URI of a vocabulary event is `nostr:<naddr>`, where `<naddr>` is the NIP-19 `naddr` encoding of exactly these TLV entries, in this order:
+
+- type `0` — the event's `d` tag value, byte for byte as it appears in the event. It is **not** normalised: addressability is by the exact `d` value ([NIP-01](01.md)), and the naddr MUST decode back to the address the relay knows;
+- type `2` — the author pubkey;
+- type `3` — the **published** kind (39738 Concept, 39737 ConceptScheme, 39739 Collection), even when the event being identified is itself a draft, and even when an `a` tag being converted points at a draft-kind address (e.g. `39735:<pubkey>:<d>` identifies as the naddr of `39738:<pubkey>:<d>`).
+
+No type `1` (relay) entries are included, and the bech32 string is lowercase. Identifiers therefore never carry relay hints, event ids, labels, or timestamps, and label, definition, notation, and hierarchy edits never change an identifier. Relay hints belong in the companion `a` tags of a reference, not in the identifier.
+
+NIP-19 does not mandate TLV order, so a `nostr:naddr…` string received from elsewhere may differ from the canonical string while naming the same event. Consumers MUST NOT compare Nostr URIs as received strings: they MUST decode them and compare the triple (published kind, pubkey, exact `d`), ignoring relay entries — or re-encode both sides canonically first. The canonical string matters in exactly one place: the [sameness identifier](#sameness-identifier) hashes identifier strings, so producers MUST write canonical Nostr URIs into mapping events. External-URI identifiers MUST be compared as exact strings after NFC normalisation.
+
+Publishers SHOULD choose NFC-normalised `d` values when creating concepts and schemes. Implementations MUST use a bech32 codec without the 90-character BIP-173 limit (NIP-19 allows up to 5000 characters).
 
 **Identifiers are immutable.** Once a concept or scheme is published:
 
@@ -312,7 +334,7 @@ Identifiers MUST NOT contain relay hints, event ids, labels, or timestamps; the 
 
 A concept that needs a different identifier MUST be published as a new concept; the old concept MAY be linked to it with `exactMatch`. Publishing tools MUST refuse edits that would add, change, or remove the `i` tag of a published concept, and SHOULD warn when a scheme is published without URIs if it is expected to be referenced from other events.
 
-> Known deviation: `nostr:<kind>:<pubkey>:<d>` is not a NIP-21 bech32 URI. It is kept for compatibility with existing data that uses this form.
+> **Legacy form.** Earlier revisions of this NIP identified concepts without an `i` tag as `nostr:<kind>:<pubkey-hex>:<d>`. That form is not a NIP-21 URI and is not even always a valid URI (a `d` value may contain characters that are illegal in URIs). Producers MUST NOT emit it. Consumers SHOULD accept it on input and canonicalise it: parse the address, map a draft kind to its published kind, and encode the canonical Nostr URI. Mapping events published with legacy identifiers stay valid under the `d` rule (the hash is computed over the tag values as written) but do not aggregate with canonical ones; their publishers SHOULD republish them.
 
 ### Mapping — `kind:39740` (addressable)
 
@@ -323,9 +345,9 @@ A concept that needs a different identifier MUST be published as a new concept; 
   "tags": [
     ["d", "mapping:<sha256 hex>"],
     ["relation", "exactMatch"],
-    ["from", "nostr:39738:<pubkey>:5-6"],   // klassenstufen concepts have no i-tag URI
+    ["from", "nostr:naddr1…"],               // canonical Nostr URI of 39738:<pubkey>:5-6 (klassenstufen concepts have no i-tag URI)
     ["to", "https://w3id.org/kim/educationalLevel/level_2"],
-    ["fromScheme", "nostr:39737:<pubkey>:klassenstufen"],
+    ["fromScheme", "nostr:naddr1…"],         // canonical Nostr URI of 39737:<pubkey>:klassenstufen
     ["toScheme", "https://w3id.org/kim/educationalLevel/"],
 
     // index tags (for relay filtering only; carry no semantics)
@@ -352,7 +374,7 @@ A concept that needs a different identifier MUST be published as a new concept; 
 | `to` | 1..n | Target concept identifiers; several = AND combination (JSKOS `memberSet`) |
 | `fromScheme`, `toScheme` | 1 each | Scheme identifiers |
 | `a` (no marker) | 0..n | Index: address of every referenced concept/scheme that exists as a Nostr event. SHOULD be present for each such concept/scheme |
-| `i` | 0..n | Index: every referenced concept identifier that is a URI (not `nostr:`). SHOULD be present |
+| `i` | 0..n | Index: every referenced concept identifier that is an external URI (not a `nostr:` URI; Nostr-published concepts are indexed by `a`). SHOULD be present |
 | `a` … `partOf` | 0..1 | Concordance membership (see [Concordance](#concordance)) |
 | `relevance` | 0..1 | Decimal 0..1, JSKOS `mappingRelevance` |
 | content | — | Free-text note (JSKOS `note`) |
@@ -369,19 +391,26 @@ Rules:
 
 `d` is the [TS4NFDI Mapping Sameness Identifier](https://ts4nfdi.github.io/mapping-sameness-identifier/), affirmative form:
 
-1. subjects = [`from`], objects = `to` values, each NFC-normalised; duplicate values MUST be removed before sorting (subjects and objects are sets);
+1. subjects = [`from`], objects = `to` values, each NFC-normalised (Nostr-published concepts enter as their canonical Nostr URI, see above); duplicate values MUST be removed before sorting (subjects and objects are sets);
 2. sort subjects and objects by Unicode code point, join each with `|`;
 3. predicate = the full SKOS IRI, `http://www.w3.org/2004/02/skos/core#<relation>`;
 4. string = `<subjects> <predicate> <objects>` (single spaces), UTF-8;
 5. SHA-256, lowercase hex; `d` = `mapping:<hex>`.
 
-The following are test vectors using `nostr:` identifiers:
+The following are test vectors using canonical Nostr URIs. The two Nostr-published concepts are (pubkey `d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612`):
+
+| address | canonical Nostr URI |
+|---|---|
+| `39738:d2689e2f…a612:5-6` | `nostr:naddr1qqpn2tfkqgsdy6y79aqa40a6j576yej449xw92jwq2wrs0hfy8r2fh404wv6vysrqsqqpxe6vja26r` |
+| `39738:d2689e2f…a612:ubung-lernkontrolle` | `nostr:naddr1qqfh2cn4denj6mr9wfhxkmmww3ex7mrvv5pzp5ngnch5rk4lh22nmgnx2k55ec42fcpfcwp7aysudfx7474enfsjqvzqqqym8g03gpqh` |
 
 | from | relation | to | `d` |
 |---|---|---|---|
-| `nostr:39738:d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612:5-6` | `exactMatch` | `https://w3id.org/kim/educationalLevel/level_2` | `mapping:79bbfff8bd56bf8d827a8687a91e6abe94bf496305e4258071bb73347ad99431` |
+| `nostr:naddr1qqpn2tfkqgsdy6y79aqa40a6j576yej449xw92jwq2wrs0hfy8r2fh404wv6vysrqsqqpxe6vja26r` | `exactMatch` | `https://w3id.org/kim/educationalLevel/level_2` | `mapping:f5d7fbaec398fa339b403145f100af6c30cb5c6d45bf97f93024b26a4578679c` |
 | `https://edufeed.org/ns/ekw#lrt/arbeitsblatt` | `exactMatch` | `https://w3id.org/kim/hcrt/worksheet` | `mapping:3ee871bd4f4a105564793c8ff1476f8e72685eb5d8c6b6e3188e3ec95752c75c` |
-| `nostr:39738:d2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612:ubung-lernkontrolle` | `narrowMatch` | `https://w3id.org/kim/hcrt/assessment`, `https://w3id.org/kim/hcrt/drill_and_practice` (any order; duplicates don't matter) | `mapping:eac6f2b08c2a3fa266f7e3a750abdd1643b7e4e4460b133d0e053f2a775443f7` |
+| `nostr:naddr1qqfh2cn4denj6mr9wfhxkmmww3ex7mrvv5pzp5ngnch5rk4lh22nmgnx2k55ec42fcpfcwp7aysudfx7474enfsjqvzqqqym8g03gpqh` | `narrowMatch` | `https://w3id.org/kim/hcrt/assessment`, `https://w3id.org/kim/hcrt/drill_and_practice` (any order; duplicates don't matter) | `mapping:42154157f823a212feb8995c776f0157abfce74d42e57b973022910a4ea8c7d1` |
+
+Both naddr strings MUST be reproduced byte for byte by a conforming encoder (they were cross-checked with go-nostr and nostr-tools).
 
 Implementations MUST reproduce the two published [TS4NFDI](https://ts4nfdi.github.io/mapping-sameness-identifier/) test vectors (the negative one by implementing the `~` suffix internally, even though negative mappings are not published in this revision), plus the test vectors above.
 
@@ -406,7 +435,7 @@ The rule "publishers SHOULD assert both directions" (see [Mapping Relations (Nos
   "tags": [
     ["d", "klassenstufen--educational-level"],
     ["title", "Klassenstufen ↔ Bildungsstufe", "de"],
-    ["fromScheme", "nostr:39737:<pubkey>:klassenstufen"],
+    ["fromScheme", "nostr:naddr1…"],         // canonical Nostr URI of 39737:<pubkey>:klassenstufen
     ["toScheme", "https://w3id.org/kim/educationalLevel/"],
     ["a", "39737:<pubkey>:klassenstufen"],
     ["a", "39737:<pubkey>:educational-level"],
@@ -473,7 +502,7 @@ Rules:
 
 Client resolution SHOULD proceed as follows:
 
-1. **Normalise** both sources into one model `{id, from, to[], relation, fromScheme, toScheme, author, partOf?, origin}`: embedded `a` tags with mapping markers and embedded `r` tags with mapping markers on Concept events (author = concept author, `origin: "embedded"`), and standalone `kind:39740` events (`origin: "standalone"`). Converting an embedded `a`-tag target into a concept identifier (see [Concept Identifiers](#concept-identifiers)) needs the target concept event, for its `i` tag; clients SHOULD fall back to the `nostr:` form when the target is not available. Embedded mappings' `id` SHOULD be computed with the same sameness algorithm as standalone mappings; entries with an equal `id` SHOULD be merged into one mapping with multiple sources.
+1. **Normalise** both sources into one model `{id, from, to[], relation, fromScheme, toScheme, author, partOf?, origin}`: embedded `a` tags with mapping markers and embedded `r` tags with mapping markers on Concept events (author = concept author, `origin: "embedded"`), and standalone `kind:39740` events (`origin: "standalone"`). Converting an embedded `a`-tag target into a concept identifier (see [Concept Identifiers](#concept-identifiers)) needs the target concept event, for its `i` tag; clients SHOULD fall back to the canonical Nostr URI, which is computable from the address alone, when the target is not available. Embedded mappings' `id` SHOULD be computed with the same sameness algorithm as standalone mappings; entries with an equal `id` SHOULD be merged into one mapping with multiple sources.
 2. **Inverses** SHOULD be computed per [Direction](#direction), so a lookup from either side finds a mapping.
 3. The **trust set** is a parameter of resolution: `{concordances: ParsedConcordance[], authors?: pubkey[], includeEmbedded: boolean}`, or `'all'`. Clients SHOULD pass parsed concordance objects (carrying author, maintainers, and schemes), not just concordance addresses, since membership requires them. Editors SHOULD pass "everything" and group results by source; search consumers SHOULD pass their configured concordances.
 4. **Transitivity**: clients SHOULD chain only `exactMatch`, only within the trust set, at most 3 hops. `closeMatch`, `broadMatch`, `narrowMatch`, and `relatedMatch` MUST NOT be chained in this revision.
@@ -635,7 +664,7 @@ A concept in one Nostr-native vocabulary mapped to a concept in another:
 
 ### Example 3: Using a Vocabulary Concept in an AMB Event
 
-An educational resource referencing a Nostr-native vocabulary concept:
+An educational resource referencing two Nostr-published vocabulary concepts — one that carries an external URI in its `i` tag, one that is identified by its canonical Nostr URI:
 
 ```json
 {
@@ -643,14 +672,20 @@ An educational resource referencing a Nostr-native vocabulary concept:
   "tags": [
     ["d", "pythagorean-theorem-video"],
     ["name", "Pythagorean Theorem Explained"],
-    ["a", "39738:abc123...:s1017", "wss://relay.example.com"],
-    ["a", "39738:abc123...:video", "wss://relay.example.com"],
+    ["about:id", "http://w3id.org/kim/schulfaecher/s1017"],
+    ["about:prefLabel:de", "Mathematik"],
+    ["a", "39738:abc123...:s1017", "wss://relay.example.com", "about"],
+    ["learningResourceType:id", "nostr:naddr1..."],
+    ["learningResourceType:prefLabel:de", "Erklärvideo"],
+    ["a", "39738:abc123...:erklaervideo", "wss://relay.example.com", "learningResourceType"],
     ["t", "Pythagoras"],
     ["t", "Geometrie"]
   ],
   "content": "An introductory video explaining the Pythagorean theorem"
 }
 ```
+
+The `a` tags make both concepts queryable by `#a` on the relay; the `:id` tags carry the identifiers that AMB consumers read.
 
 ## Migration from single-kind
 

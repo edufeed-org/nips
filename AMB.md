@@ -120,6 +120,12 @@ This is how we convert each property of the AMB:
 
 #### Educational:
 
+Concept `<uri>` values throughout this NIP (`about`, `learningResourceType`, `audience`, `teaches`, `assesses`, `competencyRequired`, `educationalLevel`, `interactivityType`, and concept facets in the `ext` namespace) are the concept's identifier as defined by [NIP-VOCAB](VOCAB.md#concept-identifiers): its external URI when it has one, otherwise its canonical Nostr URI `nostr:naddr1…` — the [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) `naddr` of the published kind, pubkey and exact `d` value, with no relay entries, prefixed per [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md). Both are valid URIs, as the AMB schema requires. The legacy `nostr:<kind>:<pubkey>:<d>` form MUST NOT be emitted; consumers SHOULD accept it on input and canonicalise it. When the concept is published on Nostr, converters SHOULD add a companion `a` tag whose fourth element is the flattened prefix the concept appears under, mirroring the relation tags below:
+
+- `["a", "39738:<pubkey>:<d>", <relay-hint>, "<prefix>"]` — e.g. `["a", "39738:<pubkey>:s1017", "wss://relay.example", "about"]`
+
+The companion tag is an index and a relay hint; the `:id` tag stays authoritative.
+
 - `learningResourceType` (array of Concept objects) → Repeat for each:
   - `["learningResourceType:id", <uri>]`
   - `["learningResourceType:prefLabel:lang", <label>]` (optional)
@@ -317,7 +323,7 @@ To convert a Nostr event back to AMB metadata:
 4. **Handle arrays**: Multiple tags with identical keys become array elements
 5. **Preserve order**: Array order is determined by tag order in the event
 6. **Special mappings**:
-   - `d` tag → `id` property: if the `d` value is an absolute URI, use it verbatim; otherwise derive the `id` as `nostr:<naddr1...>` (the [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) `naddr` encoding of kind `30142`, the event's `pubkey`, and the `d` value). Consumers MAY substitute a dereferenceable landing-page URL they control for the derived `nostr:` URI.
+   - `d` tag → `id` property: if the `d` value is an absolute URI, use it verbatim; otherwise derive the `id` as `nostr:<naddr1...>` (the [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) `naddr` encoding of kind `30142`, the event's `pubkey`, and the exact `d` value, with no relay entries — the canonical form defined in [NIP-VOCAB](VOCAB.md#canonical-nostr-uri)). Consumers MAY substitute a dereferenceable landing-page URL they control for the derived `nostr:` URI.
    - `content` field → `description` property (prefer over `description` tag if both exist)
    - `t` tags → `keywords` array
    - `r` tags → Nostr-native supplementary references (no AMB equivalent; not included in AMB output)
@@ -347,8 +353,9 @@ To convert a Nostr event back to AMB metadata:
      "type": "LearningResource"
    }
    ```
-   The `id` uses the NIP-19 `naddr` encoding (which includes kind, pubkey, d-tag, and relay hint(s)) prefixed with `nostr:` per NIP-21.
-10. **Extension tags (`ext:` prefix)**: Parse each key whose first segment is `ext` using the normative left-anchored rule in *Extension Properties*, ignoring any key that does not match. Group the surviving tags by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`); keys with no `<sub>` yield strings instead. Concepts and scalars under one pair accumulate independently and concatenate as concepts-then-scalars — see *Mixed facets*. Place the result under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
+   The `id` uses the canonical NIP-19 `naddr` encoding (kind, pubkey and exact d-tag; **no** relay entries) prefixed with `nostr:` per NIP-21, so that the same resource always yields the same identifier. The relay hint from the `a` tag is not part of the identifier; implementations MAY surface it separately.
+10. **Concept `a` tags** (vocabulary): For each `["a", "39738:<pubkey>:<d>", <relay-hint>, <prefix>]` whose `<prefix>` is a flattened concept facet (`about`, `teaches`, `ext:<ns>:<facet>`, …), the concept is already present in the output through its `<prefix>:id` triple; the `a` tag adds nothing to the AMB object. Implementations MAY use it to fetch the `kind:39738` event for label translation or hierarchy, and MUST NOT emit a second concept object for it. A concept `a` tag without a matching `<prefix>:id` triple MAY be reconstructed as a concept whose `id` is the canonical Nostr URI of the address.
+11. **Extension tags (`ext:` prefix)**: Parse each key whose first segment is `ext` using the normative left-anchored rule in *Extension Properties*, ignoring any key that does not match. Group the surviving tags by `(<namespace>, <facet>)`. Within each pair, apply the same flattening rules as AMB-core (boundary on repeated `id`, `prefLabel:<lang>` → `prefLabel.<lang>`); keys with no `<sub>` yield strings instead. Concepts and scalars under one pair accumulate independently and concatenate as concepts-then-scalars — see *Mixed facets*. Place the result under `output.ext.<namespace>.<facet>`. Implementations MUST NOT merge ext entries into AMB-core properties.
 
 
 ## How to query for AMB nostr-events in supporting relays
