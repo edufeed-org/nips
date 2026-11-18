@@ -23,7 +23,7 @@ This NIP follows Nostr conventions where they align with AMB requirements:
 
 - **`d` tag**: Used as the unique identifier for the AMB resource (maps to AMB `id`)
 - **`t` tags**: Used for keywords/topics (instead of flattened `keywords` tags)
-- **`p` tags**: Used for creator/contributor references when the person has a Nostr identity (pubkey). Format: `["p", <pubkey-hex>, <relay-hint>, <role>]` where `<role>` is `"creator"` or `"contributor"`. The relay hint is a single suggestion for discovery (per NIP-01 convention); clients SHOULD use NIP-65 for full relay resolution. When a `p` tag is used for a person, no `creator:*`/`contributor:*` flattened tags are emitted for that person — the pubkey IS their identity. Persons without a Nostr identity use the flattened `creator:*`/`contributor:*` tag structure instead.
+- **`p` tags**: Make a credited person or organization with a Nostr identity (pubkey) queryable and notify them. Format: `["p", <pubkey-hex>, <relay-hint>, <role>]` where `<role>` is `"creator"`, `"contributor"`, `"publisher"` or `"funder"`. The relay hint is a single suggestion for discovery (per NIP-01 convention); clients SHOULD use NIP-65 for full relay resolution. The `p` tag is a companion to that person's flattened `<role>:*` tags, whose `<role>:id` carries the same pubkey as a `nostr:` URI (see [Provenance](#provenance)). Persons without a Nostr identity have the flattened tags only.
 - **`a` tags**: Used for references to other addressable events on Nostr (including other AMB events), with fallback to flattened URIs for external resources. Format: `["a", "30142:<pubkey>:<d-value>", <relay-hint>, <relationship>]`
 - **`r` tags**: Used for external URL references (original source, DOI, related web resources)
 - **`content` field**: SHOULD contain the description text for client compatibility; the `description` tag is kept for relay queryability
@@ -78,21 +78,30 @@ This is how we convert each property of the AMB:
 
 #### Provenance:
 
-- `creator` (array of Person/Organization objects) → For each creator, use **one** of the following (never both for the same person):
-  - **Nostr-native (creator has a Nostr pubkey)**: `["p", <pubkey-hex>, <relay-hint>, "creator"]` — no additional `creator:*` tags for this person. Their name and metadata are resolved from their kind:0 profile.
-    - **Detection**: If a creator object's `id` is a `nostr:` URI per [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md) encoding an `npub` or `nprofile`, converters MUST decode it and emit the `p` tag form instead of flattened `creator:*` tags. (This is valid AMB input: the AMB schema constrains `creator.id` only to `format: uri`; the ORCID/GND/Wikidata/ROR list is a SHOULD-level recommendation.)
-    - **Relay hint precedence**: relay embedded in the `nprofile` (first entry) → converter-configured default → empty string.
-  - **External (no Nostr identity)**:
-    - `["creator:id", <uri>]` (optional, e.g., ORCID, GND)
-    - `["creator:name", <name>]`
-    - `["creator:type", <"Person"|"Organization">]`
-    - `["creator:honorificPrefix", <title>]` (optional, for persons)
-    - `["creator:affiliation:id", <uri>]` (optional)
-    - `["creator:affiliation:name", <name>]` (optional)
-    - `["creator:affiliation:type", "Organization"]` (optional)
-- `contributor` (array of Person/Organization objects) → Same structure as `creator` (including `nostr:` URI detection), using role `"contributor"` in the `p` tag
+- `creator` (array of Person/Organization objects) → For each creator, the flattened tags:
+  - `["creator:id", <uri>]` (optional, e.g., ORCID, GND, or a `nostr:` URI — see below)
+  - `["creator:name", <name>]`
+  - `["creator:type", <"Person"|"Organization">]`
+  - `["creator:honorificPrefix", <title>]` (optional, for persons)
+  - `["creator:affiliation:id", <uri>]` (optional)
+  - `["creator:affiliation:name", <name>]` (optional)
+  - `["creator:affiliation:type", "Organization"]` (optional)
+- `contributor` (array of Person/Organization objects) → Same structure as `creator`, with the `contributor:` prefix
 
-  > **Known limitation:** A person with both a Nostr identity and external identifiers (e.g., an ORCID) is represented by the `p` tag alone; their external identifier, `affiliation`, and `honorificPrefix` are not carried in the event, since kind:0 profiles have no standard fields for them. This deviates from the AMB SHOULD-level recommendation to reference ORCID/GND/Wikidata/ROR and is accepted as a trade-off for having exactly one unambiguous representation per person.
+  **Creators and contributors with a Nostr identity.** The flattened tags are the record of the credit: the name the person was credited under, their type and affiliation. The Nostr identity is added to that record, not substituted for it:
+
+  - `["creator:id", "nostr:<npub1...>"]` — the `id` of the flattened run is the [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md) URI of the pubkey, encoded as `npub` (no relay entries, so the same person always yields the same identifier). This is valid AMB: the schema constrains `creator.id` only to `format: uri`; the ORCID/GND/Wikidata/ROR list is a SHOULD-level recommendation.
+  - `["p", <pubkey-hex>, <relay-hint>, "creator"]` — a companion tag with the same pubkey. It adds nothing to the AMB object; it lets relays index the credit (`#p`) and clients notify the person. This mirrors the companion `a` tags of concepts under [Educational](#educational).
+
+  Rules:
+
+  - **Producers** SHOULD emit both. A converter whose input has a `nostr:` URI (`npub` or `nprofile`) as `creator.id` MUST normalise it to the `npub` form in `creator:id` and MUST add the companion `p` tag. Relay hint precedence for the `p` tag: relay embedded in the `nprofile` (first entry) → converter-configured default → empty string.
+  - **Consumers** MUST treat a flattened run and a `p` tag as one person when the run's `<role>:id` encodes the pubkey of the `p` tag and the role matches, and MUST NOT show or emit that person twice. The credited name is the run's `<role>:name`; clients MAY link it to the kind:0 profile.
+  - **A `p` tag without a matching run** remains valid (events written before this rule, or a producer that knows only the pubkey): the name and type are then resolved from the kind:0 profile.
+  - **A run with a `nostr:` id but no `p` tag** is still that person, but cannot be found by `#p`; producers SHOULD NOT emit it.
+
+  > **Known limitation:** `id` holds one URI. A person credited with their Nostr identity cannot also carry an ORCID/GND in `creator:id`. `affiliation` and `honorificPrefix` are carried as usual.
+
 
 - `dateCreated` → `["dateCreated", <ISO8601Date>]`
 - `datePublished` → `["datePublished", <ISO8601Date>]`
@@ -106,7 +115,7 @@ This is how we convert each property of the AMB:
   - `["funder:name", <name>]`
   - `["funder:type", <"Person"|"Organization"|"FundingScheme">]`
 
-> **Note:** No `p`-tag role is defined for `publisher` or `funder`. A `nostr:` URI in their `id` is emitted verbatim as the flattened `publisher:id`/`funder:id` value.
+> **`publisher` and `funder` with a Nostr identity** follow the same rule as creators: `publisher:id`/`funder:id` holds the `nostr:<npub1...>` URI and a companion `["p", <pubkey-hex>, <relay-hint>, "publisher"|"funder"]` tag makes it queryable. A `p` tag with one of these roles and no matching run is resolved from the kind:0 profile.
 
 #### Costs and Rights:
 
@@ -327,7 +336,7 @@ To convert a Nostr event back to AMB metadata:
    - `content` field → `description` property (prefer over `description` tag if both exist)
    - `t` tags → `keywords` array
    - `r` tags → Nostr-native supplementary references (no AMB equivalent; not included in AMB output)
-   - `p` tags with role → Nostr-native creator/contributor (see below)
+   - `p` tags with role → companion to a flattened creator/contributor/publisher/funder, or a Nostr-native one on its own (see below)
    - `a` tags with role → Nostr-native relation (see below)
    - Convert string booleans to actual booleans (e.g. `isAccessibleForFree`)
    - Convert numeric strings back to integers where the AMB schema requires numbers (`suggestedAge:minValue`/`suggestedAge:maxValue`)
@@ -335,7 +344,7 @@ To convert a Nostr event back to AMB metadata:
 7. **Add `@context`**: The output MUST include `"@context": ["https://w3id.org/kim/amb/context.jsonld", {"@language": "<lang>"}]` — the AMB schema requires `@context` at the top level. The language is implementation-configurable (default: `de`).
 
    > **Known limitation:** Custom or extended `@context` entries from a source AMB document (e.g. an additional `"https://schema.org"` entry) are not stored in the event and therefore cannot be restored on reverse conversion — the canonical two-element context is always reconstructed. Documents using only the standard AMB context round-trip losslessly.
-8. **Nostr-native `p` tags** (creator/contributor): For each `["p", <pubkey-hex>, <relay-hint>, <role>]` where `<role>` is `"creator"` or `"contributor"`, clients SHOULD fetch the user's kind:0 profile (using the relay hint and NIP-65) to resolve their `name`. Map to an AMB creator/contributor object:
+8. **`p` tags with a role** (`"creator"`, `"contributor"`, `"publisher"`, `"funder"`): If a flattened run of that role has an `id` that is a `nostr:` URI encoding the same pubkey, the person is already present in the output through that run; the `p` tag adds nothing to the AMB object, and implementations MUST NOT emit a second object for it. Otherwise (a `p` tag on its own), clients SHOULD fetch the user's kind:0 profile (using the relay hint and NIP-65) to resolve their `name`, and map the tag to an AMB object of that role:
    ```json
    {
      "name": "<name from kind:0 profile>",
@@ -380,7 +389,7 @@ In addition to standard single-letter tag filters, AMB-supporting relays SHOULD 
 |---|---|
 | `#t` | Filter by keyword |
 | `#r` | Filter by external reference URL |
-| `#p` | Filter by creator/contributor pubkey |
+| `#p` | Filter by creator/contributor/publisher/funder pubkey |
 | `#a` | Filter by addressable event reference |
 | `#about:id` | Filter by subject (controlled vocabulary URI) |
 | `#learningResourceType:id` | Filter by resource type URI |
@@ -548,7 +557,7 @@ nak req --search "forschung publisher.name:e-teaching.org" -k 30142 ws://relay.e
 
 ### Example 2: Resource with Nostr-Native and External Creators
 
-This example demonstrates both creator types: a Nostr-native creator (using a `p` tag only) and an external creator without a Nostr identity (using `creator:*` flattened tags).
+This example demonstrates both creator types: a creator with a Nostr identity (flattened tags whose `creator:id` is a `nostr:` URI, plus the companion `p` tag) and an external creator without a Nostr identity (flattened tags only).
 
 ```json
 {
@@ -562,6 +571,9 @@ This example demonstrates both creator types: a Nostr-native creator (using a `p
     ["type", "Course"],
     ["name", "Introduction to Physics"],
     ["description", "A comprehensive introduction to classical mechanics"],
+    ["creator:id", "nostr:npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d"],
+    ["creator:name", "Jane Roe"],
+    ["creator:type", "Person"],
     ["p", "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "wss://relay.example.com", "creator"],
     ["creator:id", "https://orcid.org/0000-0009-8765-4321"],
     ["creator:name", "Prof. John Doe"],
@@ -593,7 +605,7 @@ This example demonstrates both creator types: a Nostr-native creator (using a `p
 ```
 
 In this example:
-- The first creator has a Nostr pubkey, so only a `p` tag with role `"creator"` is used. Their name and metadata are resolved from their kind:0 profile.
+- The first creator (Jane Roe) has a Nostr pubkey: her flattened tags record the name she is credited under, `creator:id` holds her `nostr:` URI, and the companion `p` tag makes the credit queryable. Consumers count the run and the `p` tag as one person.
 - The second creator (Prof. John Doe) has no Nostr identity, so the `creator:*` flattened tags provide their name, type, affiliation, and ORCID.
 
 ### Example 3: Resource with Extension Namespace
@@ -671,11 +683,14 @@ nak event \
   --tag license:id="https://creativecommons.org/licenses/by/4.0/" \
   --sec <key> --auth ws://relay.example.com
 
-# Resource with Nostr-native creator (p tag)
+# Resource with a creator who has a Nostr identity (flattened tags + companion p tag)
 nak event \
   -k 30142 \
   --tag d="https://example.org/resource/456" \
   --tag name="Physics Course" \
+  --tag creator:id="nostr:npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d" \
+  --tag creator:name="Jane Roe" \
+  --tag creator:type="Person" \
   -p "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798;wss://relay.example.com;creator" \
   --sec <key> --auth ws://relay.example.com
 ```
